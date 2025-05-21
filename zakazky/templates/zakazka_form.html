@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nová zakázka</title>
+</head>
+<body>
+<h2>Vytvořit novou zakázku</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Uložit</button>
+</form>
+<a href="{% url 'dashboard' %}">Zpět</a>
+</body>
+</html>
