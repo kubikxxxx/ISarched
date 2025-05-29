@@ -1,0 +1,7 @@
+<h2>Opravdu chcete smazat tuto zakázku?</h2>
+<p>{{ zakazka.nazev }}</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">Ano, smazat</button>
+    <a href="{% url 'homepage' %}">Zrušit</a>
+</form>

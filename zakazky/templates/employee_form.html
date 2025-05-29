@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Nová zakázka</title>
+    <title>Přidat zaměstnance</title>
 </head>
 <body>
-<h2>Vytvořit novou zakázku</h2>
+<h2>Přidat nového zaměstnance</h2>
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
+
     <button type="submit">Uložit</button>
 </form>
-<a href="{% url 'homepage' %}">Zpět</a>
+<a href="{% url 'homepage' %}">Zpět na homepage</a>
 </body>
 </html>

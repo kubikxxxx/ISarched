@@ -1,0 +1,263 @@
+{% load assign_filters %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IS Arched</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            display: flex;
+            height: 100vh;
+        }
+
+        .left, .right {
+            width: 250px;
+            padding: 15px;
+            background: #f4f4f4;
+            overflow-y: auto;
+        }
+
+        .center {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+        }
+
+        .center-left {
+            flex: 1;
+            padding-right: 20px;
+        }
+
+        .center-right {
+            width: 400px;
+            background: #fafafa;
+            padding: 15px;
+            border-left: 1px solid #ccc;
+        }
+
+        .zakazka {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ccc;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .button {
+            background: #007bff;
+            color: white;
+            padding: 5px 10px;
+            text-decoration: none;
+            border-radius: 3px;
+        }
+
+        .button.danger {
+            background: #dc3545;
+        }
+    </style>
+</head>
+<body>
+
+<!-- LEVÝ PANEL – ZAKÁZKY -->
+<div class="left">
+    <h3>Zakázky</h3>
+    {% if is_admin %}
+        {% if aktivni == '1' %}
+            <form method="get" style="margin-bottom: 10px;">
+                <input type="hidden" name="aktivni" value="0">
+                <label>
+                    <input type="checkbox" checked onclick="this.form.submit();">
+                    Jen aktivní zakázky
+                </label>
+            </form>
+        {% else %}
+            <form method="get" style="margin-bottom: 10px;">
+                <input type="hidden" name="aktivni" value="1">
+                <label>
+                    <input type="checkbox" onclick="this.form.submit();">
+                    Jen aktivní zakázky
+                </label>
+            </form>
+        {% endif %}
+    {% endif %}
+    {% for zakazka in zakazky %}
+        <div class="zakazka">
+            <strong>{{ zakazka.nazev }}</strong>
+            <div style="margin-top: 10px;">
+                <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}" class="button">Detail</a>
+                {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}" class="button">Zaměstnanci</a>{% endif %}
+            </div>
+        </div>
+    {% endfor %}
+
+    {% if is_admin %}
+        <a href="{% url 'create_zakazka' %}" class="button">+ Nová zakázka</a>
+    {% endif %}
+</div>
+
+<!-- STŘEDOVÝ PANEL -->
+<div class="center">
+    <div class="center-left">
+        <div class="header">
+            <h2>IS Arched</h2>
+            <a href="{% url 'logout' %}" class="button">Odhlásit se</a>
+        </div>
+
+        {% if selected_zamestnanci_id and zakazka_zam %}
+            <a href="{% url 'prirazeni_view' zakazka_zam.id %}" class="button">Přidělit zaměstnance</a>
+            <h3>Přiřazení zaměstnanci</h3>
+            <ul>
+                {% for z in zamestnanci_prirazeni %}
+                    <li>{{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }} (od {{ z.datum_prideleni|date:"d.m.Y" }})</li>
+                {% empty %}
+                    <li>Nebyli přiřazeni žádní zaměstnanci.</li>
+                {% endfor %}
+            </ul>
+
+        {% elif zakazka_detail %}
+            {% if is_admin %}
+                <div style="margin-top: 15px;">
+                    <a href="{% url 'edit_zakazka' zakazka_detail.id %}" class="button" style="margin-right: 10px;">Upravit</a>
+                    <a href="{% url 'delete_zakazka' zakazka_detail.id %}" class="button danger">Smazat</a>
+                    <a href="{% url 'zakazka_subdodavky' zakazka_detail.id %}" class="button">Subdodávky</a>
+                </div>
+            {% endif %}
+
+            <h3>Detail zakázky</h3>
+            <div style="margin-bottom: 10px;">
+                <p><strong>Název:</strong> {{ zakazka_detail.nazev }}</p>
+                <p><strong>Číslo:</strong> {{ zakazka_detail.zakazka_cislo }}</p>
+                <p><strong>Termín:</strong> {{ zakazka_detail.termin }}</p>
+                <p><strong>Popis:</strong> {{ zakazka_detail.popis_zadani }}</p>
+                <p><strong>Město:</strong> {{ zakazka_detail.mesto }}</p>
+                <p><strong>Ulice:</strong> {{ zakazka_detail.ulice }}</p>
+                <p><strong>Plná moc:</strong> {{ zakazka_detail.plna_moc|yesno:"Ano,Ne" }}</p>
+                {% if is_admin %}
+                    <p><strong>Fixní náklady bez zaměstnanců:</strong> {{ zakazka_detail.orientacni_naklady }}</p>
+                {% endif %}
+            </div>
+
+            <h4>Úřední zápisy</h4>
+            <ul>
+                {% for zapis in uredni_zapisy %}
+                    <li>
+                        {{ zapis.datum|date:"d.m.Y" }} → {{ zapis.termin_do|date:"d.m.Y" }} – {{ zapis.popis|truncatechars:50 }}
+                        {% if zapis.splneno %}(splněno){% endif %}
+                        {% if is_admin %}
+                            <a href="{% url 'uredni_zapis_edit' zapis.id %}" class="button" style="margin-left:10px;">Upravit</a>
+                        {% endif %}
+                    </li>
+                {% empty %}
+                    <li>Žádné úřední zápisy.</li>
+                {% endfor %}
+            </ul>
+
+            {% if is_admin %}
+                <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}" class="button">+ Přidat úřední zápis</a>
+            {% endif %}
+        {% elif klient_detail %}
+            <h3>Detail klienta</h3>
+            <div style="margin-bottom: 10px;">
+                <p><strong>Název:</strong> {{ klient_detail.nazev }}</p>
+                <p><strong>IČO:</strong> {{ klient_detail.ico }}</p>
+                <p><strong>Email:</strong> {{ klient_detail.email }}</p>
+                <p><strong>Telefon:</strong> {{ klient_detail.telefon }}</p>
+                <p><strong>Adresa:</strong> {{ klient_detail.sidlo_ulice }}, {{ klient_detail.sidlo_mesto }} {{ klient_detail.sidlo_psc }}</p>
+            </div>
+
+            <h4>Poznámky:</h4>
+            {% if klient_poznamky %}
+                <ul>
+                    {% for p in klient_poznamky %}
+                        <li><strong>{{ p.datum|date:"d.m.Y H:i" }}:</strong> {{ p.text }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Pro tohoto klienta nebyly dosud vytvořené žádné poznámky</p>
+            {% endif %}
+
+            {% if is_admin %}
+                <div style="margin-top: 15px;">
+                    <a href="{% url 'client_edit' klient_detail.id %}" class="button" style="margin-right: 10px;">Upravit klienta</a>
+                    <a href="{% url 'client_add_note' klient_detail.id %}" class="button">Přidat poznámku</a>
+                </div>
+            {% endif %}
+        {% else %}
+            <p>Vyberte zakázku nebo klienta pro zobrazení detailu.</p>
+        {% endif %}
+    </div>
+
+    <div class="center-right">
+        {% if zakazka_detail %}
+    <h3>Výkazy práce</h3>
+    <ul>
+        <hr>
+        {% for z in zakazka_detail.zakazkazamestnanec_set.all %}
+            {% if is_admin or z.zamestnanec.id == request.user.id %}
+                <li>
+                    {{ z.den_prace|date:"d.m.Y" }} – {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}
+                    ({{ z.cas_od }}–{{ z.cas_do }})
+                    <br>{{ z.popis|truncatechars:50 }}
+                    <hr>
+                </li>
+            {% endif %}
+        {% empty %}
+            <li>Žádné záznamy.</li>
+        {% endfor %}
+    </ul>
+
+    <a href="{% url 'vykaz_create' zakazka_detail.id %}" class="button">+ Přidat výkaz</a>
+{% endif %}
+    </div>
+</div>
+
+<!-- PRAVÝ PANEL -->
+<div class="right">
+    {% if is_admin %}
+        <h3>Zaměstnanci</h3>
+        <ul>
+            {% for z in zamestnanci %}
+                <li>{{ z.jmeno }} {{ z.prijmeni }} ({{ z.username }})</li>
+            {% endfor %}
+        </ul>
+        <a href="{% url 'employee_create' %}" class="button">+ Přidat zaměstnance</a>
+
+        <h3>Klienti</h3>
+        <ul>
+            {% for k in klienti %}
+                <li>
+                    {{ k.nazev }}
+                    <a href="?detail_klient={{ k.id }}" class="button" style="float: right; font-size: 0.8em;">Detail</a>
+                </li>
+            {% endfor %}
+        </ul>
+        <a href="{% url 'client_create' %}" class="button">+ Přidat klienta</a>
+
+        <h3>Subdodavatelé</h3>
+        <ul>
+            {% for sd in subdodavatele %}
+                <li>{{ sd.jmeno }} {{ sd.prijmeni }}</li>
+            {% endfor %}
+        </ul>
+        <a href="{% url 'create_subdodavatel' %}" class="button">+ Přidat subdodavatele</a>
+
+        <h3>Subdodávky</h3>
+        <ul>
+            {% for s in subdodavky %}
+                <li>{{ s.nazev }}</li>
+            {% endfor %}
+        </ul>
+        <a href="{% url 'create_subdodavka' %}" class="button">+ Přidat subdodávku</a>
+    {% endif %}
+</div>
+
+</body>
+</html>

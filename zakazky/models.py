@@ -1,6 +1,9 @@
 # models.py
+from django.conf import settings
 from django.db import models
+from django.utils.timezone import now
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+
 
 
 class ZamestnanecManager(BaseUserManager):
@@ -20,19 +23,22 @@ class ZamestnanecManager(BaseUserManager):
 
 class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=255, unique=True)
-    jmeno = models.TextField()
-    prijmeni = models.TextField()
+    jmeno = models.CharField(max_length=255)
+    prijmeni = models.CharField(max_length=255)
+    titul = models.CharField(max_length=50, blank=True, null=True)
+    datum_nastup = models.DateTimeField(default=now)
+    sazba_hod = models.DecimalField(max_digits=18, decimal_places=2)
+    sazba_km = models.DecimalField(max_digits=18, decimal_places=2, blank=True, null=True)
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
     objects = ZamestnanecManager()
 
     USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['jmeno', 'prijmeni']
+    REQUIRED_FIELDS = ['jmeno', 'prijmeni', 'datum_nastup', 'sazba_hod']
 
     class Meta:
         db_table = 'Zamestnanec'
-        managed = True
 
     def __str__(self):
         return f"{self.jmeno} {self.prijmeni}"
@@ -132,7 +138,7 @@ class Zakazka(models.Model):
     psc = models.TextField()
     orientacni_naklady = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     plna_moc = models.BooleanField()
-    hip = models.TextField()
+    hip = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="HIP")
     popis_zadani = models.TextField()
 
     class Meta:
@@ -196,7 +202,7 @@ class ZakazkaZamestnanec(models.Model):
 
 class ZamestnanecZakazka(models.Model):
     zamestnanec = models.ForeignKey('Zamestnanec', on_delete=models.CASCADE, db_column='ID_Zamestnanec')
-    zakazka = models.ForeignKey('Zakazka', on_delete=models.CASCADE, db_column='ID_Zakazka')
+    zakazka = models.ForeignKey('Zakazka', on_delete=models.CASCADE, db_column='ID_Zakazka', related_name='prirazeni')
     prideleno_hodin = models.IntegerField()
     premie_predpoklad = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     premie_skutecnost = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)

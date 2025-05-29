@@ -1,0 +1,9 @@
+<h2>Přidat poznámku ke klientovi: {{ klient.nazev }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="button">Uložit poznámku</button>
+</form>
+
+<a href="/homepage/?detail_klient={{ klient.id }}">Zpět na detail klienta</a>

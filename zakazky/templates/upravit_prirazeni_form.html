@@ -1,0 +1,23 @@
+<h2>Upravit přiřazení: {{ prirazeni.zamestnanec.jmeno }} {{ prirazeni.zamestnanec.prijmeni }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+
+    <label>Počet hodin:</label>
+    <input type="number" name="hodiny" value="{{ prirazeni.prideleno_hodin }}" required><br><br>
+
+    <label>Prémie (odhad):</label>
+    <input type="number" step="0.01" name="premie_predpoklad" value="{{ prirazeni.premie_predpoklad }}"><br><br>
+
+    <label>Prémie (skutečnost):</label>
+    <input type="number" step="0.01" name="premie_skutecnost" value="{{ prirazeni.premie_skutecnost }}"><br><br>
+
+    <label>Datum přidělení:</label>
+    <input type="date" name="datum_prideleni" value="{{ prirazeni.datum_prideleni|date:'Y-m-d' }}"><br><br>
+
+    <label>Popis:</label><br>
+    <textarea name="popis" rows="3" cols="40">{{ prirazeni.popis }}</textarea><br><br>
+
+    <button type="submit">Uložit</button>
+    <a href="{% url 'homepage' %}?detail_zamestnanci={{ prirazeni.zakazka.id }}" class="button">Zpět</a>
+</form>

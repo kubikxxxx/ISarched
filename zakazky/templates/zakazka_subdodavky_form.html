@@ -1,0 +1,95 @@
+{% load assign_filters %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Správa subdodávek</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        .subdodavka-box {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+
+        .subdodavka-box h4 {
+            margin: 0 0 10px;
+        }
+
+        label {
+            display: block;
+            margin: 5px 0;
+        }
+
+        input[type="number"], select {
+            width: 200px;
+            padding: 5px;
+        }
+
+        .button {
+            background: #007bff;
+            color: white;
+            padding: 8px 12px;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .button.cancel {
+            background: #ccc;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Přiřazení subdodávek pro zakázku: {{ zakazka.nazev }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    {% for s in subdodavky %}
+        {% with a=assigned|get_subdodavka:s %}
+            <div class="subdodavka-box">
+                <label>
+                    <input type="checkbox" name="subdodavka" value="{{ s.id }}" {% if a %}checked{% endif %}>
+                    {{ s.nazev }}
+                </label>
+
+                <div style="margin-left: 20px;">
+                    <label>Subdodavatel:</label>
+                    <select name="subdodavatel_{{ s.id }}">
+                        <option value="">-- Vyberte --</option>
+                        {% for sub in subdodavatele %}
+                            <option value="{{ sub.id }}"
+                                    {% if a and a.subdodavatel and a.subdodavatel.id == sub.id %}selected{% endif %}>
+                                {{ sub.jmeno }} {{ sub.prijmeni }}
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <label>Cena:</label>
+                    <input type="text" name="cena_{{ s.id }}" value="{% if a %}{{ a.cena }}{% endif %}">
+
+                    <label>Navýšení (%):</label>
+                    <input type="text" name="navyseni_{{ s.id }}" value="{% if a %}{{ a.navyseni }}{% endif %}">
+
+                    <label><input type="radio" name="fakturace_{{ s.id }}" value="klient"
+                                  {% if a and a.fakturuje_klientovi %}checked{% endif %}> Fakturuje klientovi</label>
+                    <label><input type="radio" name="fakturace_{{ s.id }}" value="arched"
+                                  {% if a and a.fakturuje_arched %}checked{% endif %}> Fakturuje Arched</label>
+                </div>
+            </div>
+        {% endwith %}
+    {% endfor %}
+
+    <button type="submit" class="button">Uložit</button>
+    <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="button cancel">Zpět</a>
+</form>
+
+</body>
+</html>

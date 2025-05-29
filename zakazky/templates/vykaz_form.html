@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Přidat výkaz práce</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        form {
+            max-width: 600px;
+            margin: auto;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 6px;
+            margin-top: 4px;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Přidat výkaz pro zakázku: {{ zakazka }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Uložit</button>
+</form>
+
+</body>
+</html>

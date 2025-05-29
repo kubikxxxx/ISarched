@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Přidat klienta</title>
+</head>
+<body>
+<h2>{{ form.instance.id|yesno:"Upravit klienta,Přidat klienta" }}</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="button">Uložit</button>
+</form>
+<a href="{% url 'homepage' %}">Zpět na úvod</a>
+</body>
+</html>

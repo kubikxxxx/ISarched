@@ -1,0 +1,53 @@
+{# templates/prirazeni_form.html #}
+<h2>Přidělit zaměstnance k zakázce: {{ zakazka.nazev }}</h2>
+<form method="post">
+    {% csrf_token %}
+
+    <label for="zamestnanec">Zaměstnanec:</label>
+    <select name="zamestnanec" id="zamestnanec" required>
+        <option value="">-- Vyberte --</option>
+        {% for z in zamestnanci %}
+            <option value="{{ z.id }}">{{ z.jmeno }} {{ z.prijmeni }}</option>
+        {% endfor %}
+    </select>
+    <br><br>
+
+    <label>Počet přidělených hodin:</label>
+    <input type="number" name="pridelene_hodiny" min="0" required>
+    <br><br>
+
+    <label>Prémie (odhad):</label>
+    <input type="number" step="0.01" name="premie_predpoklad">
+    <br><br>
+
+    <label>Prémie (skutečnost):</label>
+    <input type="number" step="0.01" name="premie_skutecnost">
+    <br><br>
+
+    <label>Datum přidělení:</label>
+    <input type="date" name="datum_prideleni" required>
+    <br><br>
+
+    <label>Popis:</label><br>
+    <textarea name="popis" rows="3" cols="40"></textarea>
+    <br><br>
+    <button type="submit">Uložit</button>
+    <br>
+    <a href="{% url 'homepage' %}?detail_zamestnanci={{ zakazka.id }}" class="button">Zpět</a>
+
+</form>
+
+<hr>
+
+{#<h3>Již přidělení zaměstnanci</h3>#}
+{#<ul>#}
+{#    {% for p in prirazeni %}#}
+{#        <li>#}
+{#            {{ p.zamestnanec.jmeno }} {{ p.zamestnanec.prijmeni }} - {{ p.prideleno_hodin }} h,#}
+{#            od {{ p.datum_prideleni|date:"d.m.Y" }}#}
+{#            {% if p.premie_predpoklad %} (prémie: {{ p.premie_predpoklad }}{% if p.premie_skutecnost %} / {{ p.premie_skutecnost }}{% endif %}){% endif %}#}
+{#        </li>#}
+{#    {% empty %}#}
+{#        <li>Pro tuto zakázku nebyli dosud přiděleni žádní zaměstnanci.</li>#}
+{#    {% endfor %}#}
+{#</ul>#}
