@@ -1,13 +1,45 @@
+{% load assign_filters static %}
+
 <!DOCTYPE html>
-<html>
-<head><title>Přihlášení</title></head>
-<body>
-<h2>Přihlášení</h2>
-<form method="post">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    {{ form.as_p }}
-    <button type="submit">Přihlásit</button>
-</form>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Přihlášení</title>
+
+    <link href="{% static 'css/bootstrap.css' %}" rel="stylesheet"></head>
+<body class="bg-light d-flex align-items-center" style="height: 100vh;">
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <div class="card shadow">
+                <div class="card-body">
+                    <h4 class="card-title text-center mb-4">Přihlášení</h4>
+                    <form method="post">
+                        {% csrf_token %}
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label for="id_username" class="form-label">Uživatelské jméno</label>
+                            {{ form.username|add_class:"form-control" }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_password" class="form-label">Heslo</label>
+                            {{ form.password|add_class:"form-control" }}
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Přihlásit se</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'js/bootstrap.bundle.js' %}"></script>
 </body>
 </html>

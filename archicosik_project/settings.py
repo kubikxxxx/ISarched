@@ -66,3 +66,6 @@ AUTH_USER_MODEL = 'zakazky.Zamestnanec'
 LOGIN_URL = '/'
 LOGIN_REDIRECT_URL = '/homepage/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "bootstrap"),  # adresář, kde máš složky css/ a js/
+]

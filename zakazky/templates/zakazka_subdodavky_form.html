@@ -1,95 +1,83 @@
-{% load assign_filters %}
+{% load assign_filters static %}
 <!DOCTYPE html>
-<html>
+<html lang="cs">
 <head>
+    <meta charset="UTF-8">
     <title>Správa subdodávek</title>
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
     <style>
         body {
-            font-family: sans-serif;
             padding: 20px;
         }
-
-        .subdodavka-box {
-            border: 1px solid #ccc;
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #f9f9f9;
+        .form-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: .5rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
         }
-
-        .subdodavka-box h4 {
-            margin: 0 0 10px;
-        }
-
-        label {
-            display: block;
-            margin: 5px 0;
-        }
-
-        input[type="number"], select {
-            width: 200px;
-            padding: 5px;
-        }
-
-        .button {
-            background: #007bff;
-            color: white;
-            padding: 8px 12px;
-            text-decoration: none;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .button.cancel {
-            background: #ccc;
-            margin-left: 10px;
+        .form-section h5 {
+            margin-bottom: 1rem;
         }
     </style>
 </head>
 <body>
+<div class="container">
+    <h2 class="mb-4">Přiřazení subdodávek pro zakázku: <strong>{{ zakazka.nazev }}</strong></h2>
 
-<h2>Přiřazení subdodávek pro zakázku: {{ zakazka.nazev }}</h2>
+    <form method="post">
+        {% csrf_token %}
+        {% for s in subdodavky %}
+            {% with a=assigned|get_subdodavka:s %}
+                <div class="form-section">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="subdodavka" value="{{ s.id }}" id="check_{{ s.id }}" {% if a %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="check_{{ s.id }}">{{ s.nazev }}</label>
+                    </div>
 
-<form method="post">
-    {% csrf_token %}
-    {% for s in subdodavky %}
-        {% with a=assigned|get_subdodavka:s %}
-            <div class="subdodavka-box">
-                <label>
-                    <input type="checkbox" name="subdodavka" value="{{ s.id }}" {% if a %}checked{% endif %}>
-                    {{ s.nazev }}
-                </label>
+                    <div class="mb-3">
+                        <label for="subdodavatel_{{ s.id }}" class="form-label">Subdodavatel:</label>
+                        <select class="form-select" name="subdodavatel_{{ s.id }}" id="subdodavatel_{{ s.id }}">
+                            <option value="">-- Vyberte --</option>
+                            {% for sub in subdodavatele %}
+                                <option value="{{ sub.id }}" {% if a and a.subdodavatel and a.subdodavatel.id == sub.id %}selected{% endif %}>
+                                    {{ sub.jmeno }} {{ sub.prijmeni }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-                <div style="margin-left: 20px;">
-                    <label>Subdodavatel:</label>
-                    <select name="subdodavatel_{{ s.id }}">
-                        <option value="">-- Vyberte --</option>
-                        {% for sub in subdodavatele %}
-                            <option value="{{ sub.id }}"
-                                    {% if a and a.subdodavatel and a.subdodavatel.id == sub.id %}selected{% endif %}>
-                                {{ sub.jmeno }} {{ sub.prijmeni }}
-                            </option>
-                        {% endfor %}
-                    </select>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="cena_{{ s.id }}" class="form-label">Cena:</label>
+                            <input type="text" class="form-control" name="cena_{{ s.id }}" id="cena_{{ s.id }}" value="{% if a %}{{ a.cena }}{% endif %}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="navyseni_{{ s.id }}" class="form-label">Navýšení (%):</label>
+                            <input type="text" class="form-control" name="navyseni_{{ s.id }}" id="navyseni_{{ s.id }}" value="{% if a %}{{ a.navyseni }}{% endif %}">
+                        </div>
+                    </div>
 
-                    <label>Cena:</label>
-                    <input type="text" name="cena_{{ s.id }}" value="{% if a %}{{ a.cena }}{% endif %}">
-
-                    <label>Navýšení (%):</label>
-                    <input type="text" name="navyseni_{{ s.id }}" value="{% if a %}{{ a.navyseni }}{% endif %}">
-
-                    <label><input type="radio" name="fakturace_{{ s.id }}" value="klient"
-                                  {% if a and a.fakturuje_klientovi %}checked{% endif %}> Fakturuje klientovi</label>
-                    <label><input type="radio" name="fakturace_{{ s.id }}" value="arched"
-                                  {% if a and a.fakturuje_arched %}checked{% endif %}> Fakturuje Arched</label>
+                    <div class="mb-2">
+                        <label class="form-check">
+                            <input class="form-check-input" type="radio" name="fakturace_{{ s.id }}" value="klient" {% if a and a.fakturuje_klientovi %}checked{% endif %}>
+                            Fakturuje klientovi
+                        </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="radio" name="fakturace_{{ s.id }}" value="arched" {% if a and a.fakturuje_arched %}checked{% endif %}>
+                            Fakturuje Arched
+                        </label>
+                    </div>
                 </div>
-            </div>
-        {% endwith %}
-    {% endfor %}
+            {% endwith %}
+        {% endfor %}
 
-    <button type="submit" class="button">Uložit</button>
-    <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="button cancel">Zpět</a>
-</form>
-
+        <div class="d-flex">
+            <button type="submit" class="btn btn-primary me-2">Uložit</button>
+            <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-secondary">Zpět</a>
+        </div>
+    </form>
+</div>
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>
