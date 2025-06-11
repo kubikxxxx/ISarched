@@ -51,6 +51,9 @@
         <div class="col-md-2 bg-light sidebar p-3">
             <h5 class="fw-bold">Zakázky</h5>
             {% if is_admin %}
+                <a href="{% url 'create_zakazka' %}" class="btn btn-outline-success w-100 mb-3">+ Nová zakázka</a>
+            {% endif %}
+            {% if is_admin %}
                 <form method="get" class="mb-3">
                     <input type="hidden" name="aktivni" value="{% if aktivni == '1' %}0{% else %}1{% endif %}">
                     <div class="form-check">
@@ -66,7 +69,8 @@
                     <div class="list-group-item">
                         <div class="fw-bold">{{ zakazka.nazev }}</div>
                         <div>{{ zakazka.ZakazkaCislo }}</div>
-                        <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
+                        <a href="?detail_zakazka=
+                                {{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
                            class="btn btn-sm btn-primary">Detail</a>
                         {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}"
                                             class="btn btn-sm btn-secondary">Zaměstnanci</a>{% endif %}
@@ -74,15 +78,12 @@
                 {% endfor %}
             </div>
 
-            {% if is_admin %}
-                <a href="{% url 'create_zakazka' %}" class="btn btn-outline-success w-100">+ Nová zakázka</a>
-            {% endif %}
         </div>
 
         <!-- STŘEDOVÝ PANEL -->
         <div class="col-md-7 content-area p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="h4">IS Arched</h2>
+                <h2 class="text-center">IS Arched</h2>
                 <a href="{% url 'logout' %}" class="btn btn-outline-danger">Odhlásit se</a>
             </div>
 
@@ -112,18 +113,42 @@
                 <div class="row">
                     <div class="col-md-12">
                         <div class="row">
-                            <div class="col-md-7">
+                            <div class="col-md-5">
                                 <h5>Detail zakázky</h5>
                                 <table class="table table-sm">
-                                    <tr><th>Název</th><td>{{ zakazka_detail.nazev }}</td></tr>
-                                    <tr><th>Číslo</th><td>{{ zakazka_detail.zakazka_cislo }}</td></tr>
-                                    <tr><th>Termín</th><td>{{ zakazka_detail.termin }}</td></tr>
-                                    <tr><th>Popis</th><td>{{ zakazka_detail.popis_zadani }}</td></tr>
-                                    <tr><th>Město</th><td>{{ zakazka_detail.mesto }}</td></tr>
-                                    <tr><th>Ulice</th><td>{{ zakazka_detail.ulice }}</td></tr>
-                                    <tr><th>Plná moc</th><td>{{ zakazka_detail.plna_moc|yesno:"Ano,Ne" }}</td></tr>
+                                    <tr>
+                                        <th>Název</th>
+                                        <td>{{ zakazka_detail.nazev }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Číslo</th>
+                                        <td>{{ zakazka_detail.zakazka_cislo }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Termín</th>
+                                        <td>{{ zakazka_detail.termin }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Popis</th>
+                                        <td>{{ zakazka_detail.popis_zadani }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Město</th>
+                                        <td>{{ zakazka_detail.mesto }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Ulice</th>
+                                        <td>{{ zakazka_detail.ulice }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Plná moc</th>
+                                        <td>{{ zakazka_detail.plna_moc|yesno:"Ano,Ne" }}</td>
+                                    </tr>
                                     {% if is_admin %}
-                                        <tr><th>Náklady</th><td>{{ zakazka_detail.orientacni_naklady }}</td></tr>
+                                        <tr>
+                                            <th>Náklady</th>
+                                            <td>{{ zakazka_detail.orientacni_naklady }}</td>
+                                        </tr>
                                     {% endif %}
                                 </table>
 
@@ -131,10 +156,13 @@
                                 <ul class="list-group mb-2">
                                     {% for zapis in uredni_zapisy %}
                                         <li class="list-group-item">
-                                            {{ zapis.datum|date:"d.m.Y" }} → {{ zapis.termin_do|date:"d.m.Y" }} – {{ zapis.popis|truncatechars:50 }}
-                                            {% if zapis.splneno %}<span class="badge bg-success ms-2">splněno</span>{% endif %}
+                                            {{ zapis.datum|date:"d.m.Y" }} → {{ zapis.termin_do|date:"d.m.Y" }}
+                                            – {{ zapis.popis|truncatechars:50 }}
+                                            {% if zapis.splneno %}
+                                                <span class="badge bg-success ms-2">splněno</span>{% endif %}
                                             {% if is_admin %}
-                                                <a href="{% url 'uredni_zapis_edit' zapis.id %}" class="btn btn-sm btn-outline-primary float-end">Upravit</a>
+                                                <a href="{% url 'uredni_zapis_edit' zapis.id %}"
+                                                   class="btn btn-sm btn-outline-primary float-end">Upravit</a>
                                             {% endif %}
                                         </li>
                                     {% empty %}
@@ -143,16 +171,19 @@
                                 </ul>
 
                                 {% if is_admin %}
-                                    <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}" class="btn btn-outline-success">+ Přidat úřední zápis</a>
+                                    <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}"
+                                       class="btn btn-outline-success">+ Přidat úřední zápis</a>
                                 {% endif %}
                             </div>
-                            <div class="col-md-5">
+                            <div class="col-md-7">
                                 <h5>Výkazy práce</h5>
                                 <ul class="list-group mb-2">
                                     {% for z in zakazka_detail.zakazkazamestnanec_set.all %}
                                         {% if is_admin or z.zamestnanec.id == request.user.id %}
                                             <li class="list-group-item" style="overflow: hidden;">
-                                                {{ z.den_prace|date:"d.m.Y" }} – {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }} | km: {% if z.najete_km != 0 %}{{ z.najete_km }}{% else %} - {% endif %}
+                                                {{ z.den_prace|date:"d.m.Y" }}
+                                                – {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }} | km:
+                                                {% if z.najete_km != 0 %}{{ z.najete_km }}{% else %} - {% endif %}
                                                 <small class="description-toggle" onclick="toggleDescription(this)">
                                                     <div class="short one-line">
                                                         {{ z.cas_od }}–{{ z.cas_do }} | {{ z.popis }}
@@ -167,7 +198,12 @@
                                         <li class="list-group-item">Žádné záznamy.</li>
                                     {% endfor %}
                                 </ul>
-                                <a href="{% url 'vykaz_create' zakazka_detail.id %}" class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
+                                {% for z in zakazka_detail.zakazkazamestnanec_set.all %}
+                                    {% if z.zamestnanec.id == request.user.id %}
+                                        <a href="{% url 'vykaz_create' zakazka_detail.id %}"
+                                           class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
+                                    {% endif %}
+                                {% endfor %}
                             </div>
                         </div>
                     </div>

@@ -22,7 +22,12 @@
 </head>
 <body>
 <div class="form-container">
+{% if is_edit == 'False' %}
     <h2 class="mb-4">Vytvořit novou zakázku</h2>
+    {% else %}
+    <h2 class="mb-4">Upravit zakázku</h2>
+{% endif %}
+
 
     <form method="post">
         {% csrf_token %}

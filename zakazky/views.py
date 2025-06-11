@@ -53,7 +53,6 @@ def homepage_view(request):
         prirazeni = ZamestnanecZakazka.objects.filter(zakazka=zakazka_zam)
         zamestnanci_prirazeni = ZamestnanecZakazka.objects.filter(zakazka=zakazka_zam).select_related('zamestnanec')
         prirazene_ids = zamestnanci_prirazeni.values_list('zamestnanec_id', flat=True)
-
     zamestnanci = Zamestnanec.objects.all() if request.user.is_admin else None
     klienti = Klient.objects.all() if request.user.is_admin else None
     selected_zakazka_id = request.GET.get("detail_zakazka")
@@ -99,7 +98,7 @@ def create_zakazka_view(request):
     else:
         form = ZakazkaForm()
 
-    return render(request, 'zakazka_form.html', {'form': form})
+    return render(request, 'zakazka_form.html', {'form': form, 'is_edit': 'False'})
 
 
 @login_required
@@ -109,14 +108,14 @@ def edit_zakazka_view(request, zakazka_id):
 
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
     if request.method == 'POST':
-        form = ZakazkaForm(request.POST, instance=zakazka)
+        form = ZakazkaForm(request.POST, instance=zakazka,)
         if form.is_valid():
             form.save()
             return redirect('/homepage/?detail_zakazka=' + str(zakazka_id))
     else:
         form = ZakazkaForm(instance=zakazka)
 
-    return render(request, 'zakazka_form.html', {'form': form})
+    return render(request, 'zakazka_form.html', {'form': form, 'is_edit': 'True'})
 
 
 @login_required
