@@ -10,23 +10,24 @@
             padding: 30px;
             background: #f8f9fa;
         }
+
         .form-container {
             background: white;
             padding: 2rem;
             border-radius: .5rem;
             max-width: 900px;
             margin: auto;
-            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
         }
     </style>
 </head>
 <body>
 <div class="form-container">
-{% if is_edit == 'False' %}
-    <h2 class="mb-4">Vytvořit novou zakázku</h2>
+    {% if is_edit == 'False' %}
+        <h2 class="mb-4">Vytvořit novou zakázku</h2>
     {% else %}
-    <h2 class="mb-4">Upravit zakázku</h2>
-{% endif %}
+        <h2 class="mb-4">Upravit zakázku</h2>
+    {% endif %}
 
 
     <form method="post">
@@ -53,6 +54,37 @@
                 </div>
             {% endfor %}
         </div>
+        <h5 class="mt-4">Rozsahy práce</h5>
+        <div id="rozsah-formset">
+            {{ formset.management_form }}
+            {% if formset.non_form_errors %}
+                <div class="alert alert-danger">
+                    {% for error in formset.non_form_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% for f in formset %}
+                <div class="form-row mb-2 d-flex align-items-center">
+                    <div class="me-2" style="flex: 1;">
+                        {{ f.text }}
+                        {% for error in f.text.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="me-2" style="flex: 2;">
+                        {{ f.novy_text }}
+                        {% for error in f.novy_text.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addForm()">+ Přidat další rozsah
+        </button>
+
 
         <div class="d-flex justify-content-between mt-4">
             <a href="{% url 'homepage' %}" class="btn btn-secondary">Zpět</a>
@@ -63,3 +95,61 @@
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>
+<script>
+    function addForm() {
+        const formsetDiv = document.getElementById('rozsah-formset');
+        const totalFormsInput = document.getElementById('id_form-TOTAL_FORMS');
+        const formCount = parseInt(totalFormsInput.value);
+
+        const formRows = formsetDiv.querySelectorAll('.form-row');
+        const lastForm = formRows[formRows.length - 1];
+        const newForm = lastForm.cloneNode(true);
+
+        // přejmenuj inputy/selecty, vynuluj hodnoty
+        newForm.querySelectorAll('input, select').forEach(el => {
+            if (el.name) el.name = el.name.replace(/form-\d+-/, `form-${formCount}-`);
+            if (el.id) el.id = el.id.replace(/form-\d+-/, `form-${formCount}-`);
+            if (el.tagName === 'INPUT') el.value = '';
+            if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        });
+
+        // přidej tlačítko „🗑“ (odebrat)
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn-outline-danger btn-sm';
+        removeBtn.textContent = '🗑';
+        removeBtn.onclick = function () {
+            removeForm(removeBtn);
+        };
+
+        // zkontroluj, jestli už tam náhodou tlačítko není (pro jistotu)
+        const existingBtn = newForm.querySelector('button');
+        if (!existingBtn) {
+            newForm.appendChild(removeBtn);
+        }
+
+        formsetDiv.appendChild(newForm);
+        totalFormsInput.value = formCount + 1;
+    }
+
+    function removeForm(button) {
+        const row = button.closest('.form-row');
+        row.remove();
+
+        // přepočítej indexy a TOTAL_FORMS
+        const formsetDiv = document.getElementById('rozsah-formset');
+        const totalFormsInput = document.getElementById('id_form-TOTAL_FORMS');
+        const formRows = formsetDiv.querySelectorAll('.form-row');
+
+        formRows.forEach((row, index) => {
+            row.querySelectorAll('input, select').forEach(el => {
+                if (el.name) el.name = el.name.replace(/form-\d+-/, `form-${index}-`);
+                if (el.id) el.id = el.id.replace(/form-\d+-/, `form-${index}-`);
+            });
+        });
+
+        totalFormsInput.value = formRows.length;
+    }
+</script>
+
+

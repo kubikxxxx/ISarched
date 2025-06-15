@@ -113,7 +113,7 @@ class Subdodavatel(models.Model):
 
 class Subdodavka(models.Model):
     nazev = models.TextField()
-    aktivni = models.BooleanField()
+    aktivni = models.BooleanField(default=1)
 
     class Meta:
         db_table = 'Subdodavka'
@@ -133,9 +133,7 @@ class Zakazka(models.Model):
     zakazka_start = models.DateTimeField(null=True, blank=True)
     zakazka_konec_skut = models.DateTimeField(null=True, blank=True)
     predpokladany_cas = models.IntegerField()
-    mesto = models.TextField()
-    ulice = models.TextField()
-    psc = models.TextField()
+    misto_stavby = models.TextField()
     orientacni_naklady = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     plna_moc = models.BooleanField()
     hip = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="HIP")
@@ -194,7 +192,6 @@ class ZakazkaZamestnanec(models.Model):
     class Meta:
         db_table = 'ZakazkaZamestnanec'
         managed = True
-        unique_together = (('zakazka', 'zamestnanec', 'den_prace'),)
 
     def __str__(self):
         return f"{self.zakazka} – {self.zamestnanec} – {self.den_prace}"
@@ -216,3 +213,27 @@ class ZamestnanecZakazka(models.Model):
 
     def __str__(self):
         return f"{self.zamestnanec} – {self.zakazka}"
+
+class RozsahText(models.Model):
+    text = models.TextField(unique=True)
+
+    class Meta:
+        db_table = 'RozsahText'
+
+    def __str__(self):
+        return self.text[:50]  # první znaky pro výpis
+
+
+class RozsahPrace(models.Model):
+    zakazka = models.ForeignKey(Zakazka, on_delete=models.CASCADE)
+    text = models.ForeignKey(RozsahText, on_delete=models.CASCADE)
+    vytvoril = models.ForeignKey(Zamestnanec, on_delete=models.SET_NULL, null=True)
+    datum_vytvoreni = models.DateTimeField(default=now)
+    splneno = models.BooleanField(default=False)
+    datum_splneni = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'RozsahPrace'
+
+    def __str__(self):
+        return f"{self.text} – {self.zakazka}"
