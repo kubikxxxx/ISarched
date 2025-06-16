@@ -272,10 +272,25 @@ class RozsahPraceForm(forms.ModelForm):
 
         return cleaned_data
 
+
 class ZamestnanecZakazkaForm(forms.ModelForm):
+    zamestnanec = forms.ModelChoiceField(
+        queryset=Zamestnanec.objects.all(),  # nebo upravený filtr
+        label='Zaměstnanec',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
     class Meta:
         model = ZamestnanecZakazka
-        fields = ['zamestnanec', 'prideleno_hodin', 'premie_predpoklad', 'premie_skutecnost', 'datum_prideleni', 'popis']
+        fields = ['zamestnanec', 'prideleno_hodin', 'premie_predpoklad', 'premie_skutecnost', 'datum_prideleni',
+                  'popis']
+        widgets = {
+            'prideleno_hodin': forms.NumberInput(attrs={'class': 'form-control'}),
+            'premie_predpoklad': forms.NumberInput(attrs={'class': 'form-control'}),
+            'premie_skutecnost': forms.NumberInput(attrs={'class': 'form-control'}),
+            'datum_prideleni': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'popis': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
 
 
 RozsahPraceFormSet = modelformset_factory(
