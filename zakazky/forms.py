@@ -9,7 +9,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.utils.timezone import now
 from django.forms import modelformset_factory
 from .models import Zakazka, Zamestnanec, Klient, Sazba, KlientPoznamka, Subdodavka, Subdodavatel, UredniZapis, \
-    ZakazkaZamestnanec, RozsahPrace, RozsahText
+    ZakazkaZamestnanec, RozsahPrace, RozsahText, ZamestnanecZakazka
 
 
 class LoginForm(AuthenticationForm):
@@ -182,14 +182,16 @@ class SubdodavkaForm(forms.ModelForm):
 
 
 class SubdodavatelForm(forms.ModelForm):
-    titul_pred = forms.CharField(label='Titul před', max_length=50)
-    titul_za = forms.CharField(label='Titul za', max_length=50)
+    titul_pred = forms.CharField(label='Titul před', max_length=50, default=' ')
+    titul_za = forms.CharField(label='Titul za', max_length=50, default=' ')
     jmeno = forms.CharField(label='Jméno', max_length=50)
     prijmeni = forms.CharField(label='Přijmení', max_length=50)
+    email = forms.EmailField(label='E-mail', max_length=80)
+    telefon = forms.CharField(label='Telefon', max_length=50)
 
     class Meta:
         model = Subdodavatel
-        fields = ['titul_pred', 'jmeno', 'prijmeni', 'titul_za']
+        fields = ['titul_pred', 'jmeno', 'prijmeni', 'titul_za', 'email', 'telefon']
 
 
 class UredniZapisForm(forms.ModelForm):
@@ -269,6 +271,11 @@ class RozsahPraceForm(forms.ModelForm):
             cleaned_data['text'] = text_obj
 
         return cleaned_data
+
+class ZamestnanecZakazkaForm(forms.ModelForm):
+    class Meta:
+        model = ZamestnanecZakazka
+        fields = ['zamestnanec', 'prideleno_hodin', 'premie_predpoklad', 'premie_skutecnost', 'datum_prideleni', 'popis']
 
 
 RozsahPraceFormSet = modelformset_factory(

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from django.utils.timezone import now
 from django.db.models import Sum
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
-    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet
+    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -454,48 +454,22 @@ def uredni_zapis_edit_view(request, zapis_id):
     return render(request, 'uredni_zapis_form.html', {'form': form, 'zakazka': zapis.zakazka})
 
 
-@login_required
 def prirazeni_view(request, zakazka_id):
-    if not request.user.is_admin:
-        return HttpResponseForbidden("Pouze admin může přidělovat zaměstnance.")
-
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
 
-    # Všichni již přiřazení
-    prirazeni = ZamestnanecZakazka.objects.filter(zakazka=zakazka)
-    prirazeni_ids = prirazeni.values_list('zamestnanec_id', flat=True)
-
-    # K výběru nabídnout jen nepřiřazené
-    zamestnanci = Zamestnanec.objects.exclude(id__in=prirazeni_ids)
-
     if request.method == 'POST':
-        zam_id = request.POST.get('zamestnanec')
-        hodiny = request.POST.get('pridelene_hodiny')
-        premie_predpoklad = request.POST.get('premie_predpoklad')
-        premie_skutecnost = request.POST.get('premie_skutecnost')
-        datum = request.POST.get('datum_prideleni')
-        popis = request.POST.get('popis')
-
-        if zam_id and hodiny:
-            try:
-                ZamestnanecZakazka.objects.create(
-                    zakazka=zakazka,
-                    zamestnanec_id=zam_id,
-                    prideleno_hodin=hodiny,
-                    premie_predpoklad=premie_predpoklad or None,
-                    premie_skutecnost=premie_skutecnost or None,
-                    datum_prideleni=datum or timezone.now(),
-                    popis=popis or ''
-                )
-            except Exception as e:
-                print(f"Chyba při ukládání: {e}")
-
-        return redirect(f'/homepage/?detail_zamestnanci={zakazka_id}')
+        form = ZamestnanecZakazkaForm(request.POST)
+        if form.is_valid():
+            prirazeni = form.save(commit=False)
+            prirazeni.zakazka = zakazka
+            prirazeni.save()
+            return redirect(f'/homepage/?detail_zamestnanci={zakazka_id}')
+    else:
+        form = ZamestnanecZakazkaForm()
 
     return render(request, 'prirazeni_form.html', {
-        'zakazka': zakazka,
-        'zamestnanci': zamestnanci,
-        'prirazeni': prirazeni
+        'form': form,
+        'zakazka': zakazka
     })
 
 
