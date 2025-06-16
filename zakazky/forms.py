@@ -17,7 +17,7 @@ class LoginForm(AuthenticationForm):
 
 
 class ZakazkaForm(forms.ModelForm):
-    sazba_hodnota = forms.DecimalField(label='Sazba (Kč)', max_digits=18, decimal_places=2)
+    sazba_hodnota = forms.DecimalField(label='Sazba (Kč/hod)', max_digits=18, decimal_places=2)
 
     hip = forms.ModelChoiceField(
         queryset=Zamestnanec.objects.all(),

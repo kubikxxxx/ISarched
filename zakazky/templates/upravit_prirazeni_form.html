@@ -3,6 +3,15 @@
 <form method="post">
     {% csrf_token %}
 
+    <label>Zaměstnanec:</label>
+    <select name="zamestnanec" required>
+        {% for zam in zamestnanci %}
+            <option value="{{ zam.id }}" {% if zam.id == prirazeni.zamestnanec.id %}selected{% endif %}>
+                {{ zam.jmeno }} {{ zam.prijmeni }}
+            </option>
+        {% endfor %}
+    </select><br><br>
+
     <label>Počet hodin:</label>
     <input type="number" name="hodiny" value="{{ prirazeni.prideleno_hodin }}" required><br><br>
 

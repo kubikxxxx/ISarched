@@ -117,8 +117,14 @@
                 <h5>Přiřazení zaměstnanci</h5>
                 <ul class="list-group">
                     {% for z in zamestnanci_prirazeni %}
-                        <li class="list-group-item">{{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}
-                            (od {{ z.datum_prideleni|date:"d.m.Y" }})
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>
+                                {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}
+                                (od {{ z.datum_prideleni|date:"d.m.Y" }})
+                            </span>
+                            {% if is_admin %}
+                                <a href="{% url 'upravit_prirazeni' z.id %}" class="btn btn-sm btn-outline-primary">Upravit</a>
+                            {% endif %}
                         </li>
                     {% empty %}
                         <li class="list-group-item">Nebyli přiřazeni žádní zaměstnanci.</li>
@@ -238,10 +244,17 @@
                             <div class="col-md-7">
                                 <h5>Výkazy práce</h5>
                                 <p class="mb-1">
-                                    <strong>Přiděleno:</strong> {{ predpokladany_cas }} h
-                                    <strong>Odpracováno:</strong> {{ odpracovano_hodin }} h
-                                    <strong>Zbývá:</strong>
+                                    {% if is_admin %}
+                                    Přiděleno celkem: <strong>{{ predpokladany_cas }} h</strong>
+                                    Odpracováno celkem: <strong>{{ odpracovano_hodin }} h</strong>
+                                    Zbývá celkem:
+                                    <span class="text-{{ barva_zbyva }}"><strong>{{ zbyva_hodin }} h</strong></span>
+                                        {% else %}
+                                    Přiděleno: {{ predpokladany_cas }} h
+                                    Odpracováno: {{ odpracovano_hodin }} h
+                                    Zbývá:
                                     <span class="text-{{ barva_zbyva }}">{{ zbyva_hodin }} h</span>
+                                        {% endif %}
                                 </p>
 
                                 <div class="progress" style="height: 25px;">
@@ -249,11 +262,11 @@
                                             class="progress-bar bg-{{ barva_zbyva }}"
                                             role="progressbar"
                                             style="width: {{ progress_percent }}%;"
-                                            -aria-valuenow="{{ odpracovano_hodin|floatformat:1 }}"
+                                            -aria-valuenow="{{ zbyva_hodin }}"
                                             aria-valuemin="0"
                                             aria-valuemax="{{ predpokladany_cas|floatformat:1 }}"
                                     >
-                                        {{ odpracovano_hodin|floatformat:1 }} h
+                                        {{ zbyva_hodin }} h
                                     </div>
                                 </div>
                                 {% if is_admin %}
@@ -507,7 +520,7 @@
 
             </div>
         </div>
-
+    </div>ooo
     </div>
     <script>
         function toggleFullText(liElement) {
