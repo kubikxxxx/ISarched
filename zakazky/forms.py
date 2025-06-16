@@ -182,8 +182,8 @@ class SubdodavkaForm(forms.ModelForm):
 
 
 class SubdodavatelForm(forms.ModelForm):
-    titul_pred = forms.CharField(label='Titul před', max_length=50, default=' ')
-    titul_za = forms.CharField(label='Titul za', max_length=50, default=' ')
+    titul_pred = forms.CharField(label='Titul před', max_length=50)
+    titul_za = forms.CharField(label='Titul za', max_length=50)
     jmeno = forms.CharField(label='Jméno', max_length=50)
     prijmeni = forms.CharField(label='Přijmení', max_length=50)
     email = forms.EmailField(label='E-mail', max_length=80)
