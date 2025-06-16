@@ -186,16 +186,16 @@
                                         <td>{{ zakazka_detail.popis_zadani }}</td>
                                     </tr>
                                     <tr>
-                                        <th>Rozsahy práce</th>
+                                        <th>Rozsah práce</th>
                                         <td>
                                             {% if rozsahy_prace %}
                                                 <ul class="mb-0 ps-3">
                                                     {% for r in rozsahy_prace %}
                                                         <li class="d-flex justify-content-between align-items-center">
                                                             {% if r.splneno %}
-                                                                <span style="color: green">{{ r.text.text }}</span>
+                                                                 <span style="color: green">-{{ r.text.text }}</span>
                                                             {% else %}
-                                                                <span>{{ r.text.text }}</span>
+                                                                <span>-{{ r.text.text }}</span>
                                                             {% endif %}
                                                             <form method="post"
                                                                   action="{% url 'toggle_rozsah_splneno' r.id %}"
