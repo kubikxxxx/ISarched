@@ -131,7 +131,39 @@ class EmployeeForm(UserCreationForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = Klient
-        exclude = []
+        fields = '__all__'
+        labels = {
+            'nazev': 'Jméno klienta',
+            'sidlo_mesto': 'Město sídla',
+            'sidlo_ulice': 'Ulice sídla',
+            'sidlo_psc': 'PSČ sídla',
+            'ico': 'IČO',
+            'email': 'E-mail',
+            'telefon': 'Telefon',
+            'fakturacni_nazev': 'Fakturační název',
+            'fakturacni_mesto': 'Fakturační město',
+            'fakturacni_ulice': 'Fakturační ulice',
+            'fakturacni_psc': 'Fakturační PSČ',
+            'fakturacni_ico': 'Fakturační IČO',
+            'fakturacni_email': 'Fakturační e-mail',
+            'fakturacni_telefon': 'Fakturační telefon',
+        }
+        widgets = {
+            'nazev': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_mesto': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_ulice': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_psc': forms.TextInput(attrs={'class': 'form-control'}),
+            'ico': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'telefon': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_nazev': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_mesto': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_ulice': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_psc': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_ico': forms.TextInput(attrs={'class': 'form-control'}),
+            'fakturacni_email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'fakturacni_telefon': forms.TextInput(attrs={'class': 'form-control'}),
+        }
 
 
 class KlientPoznamkaForm(forms.ModelForm):
