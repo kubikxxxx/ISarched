@@ -463,33 +463,32 @@ def prirazeni_view(request, zakazka_id):
             prirazeni = form.save(commit=False)
             prirazeni.zakazka = zakazka
             prirazeni.save()
-            return redirect(f'/homepage/?detail_zamestnanci={zakazka_id}')
+            return redirect(f'/homepage/?detail_zamestnanci={zakazka.id}')
     else:
         form = ZamestnanecZakazkaForm()
 
     return render(request, 'prirazeni_form.html', {
-        'form': form,
-        'zakazka': zakazka
+        'prirazeni_form': form,
+        'zakazka_id': zakazka.id
     })
 
 
-@login_required
 def upravit_prirazeni_view(request, prirazeni_id):
-    if not request.user.is_admin:
-        return HttpResponseForbidden("Pouze admin může upravovat přiřazení.")
-
     prirazeni = get_object_or_404(ZamestnanecZakazka, id=prirazeni_id)
+    zakazka_id = prirazeni.zakazka.id
+
     if request.method == 'POST':
-        prirazeni.prideleno_hodin = request.POST.get('hodiny')
-        prirazeni.premie_predpoklad = request.POST.get('premie_predpoklad') or None
-        prirazeni.premie_skutecnost = request.POST.get('premie_skutecnost') or None
-        prirazeni.datum_prideleni = request.POST.get('datum_prideleni') or timezone.now()
-        prirazeni.popis = request.POST.get('popis')
-        prirazeni.save()
-        return redirect(f'/homepage/?detail_zamestnanci={prirazeni.zakazka.id}')
+        form = ZamestnanecZakazkaForm(request.POST, instance=prirazeni)
+        if form.is_valid():
+            form.save()
+            return redirect(f'/homepage/?detail_zamestnanci={zakazka_id}')
+    else:
+        form = ZamestnanecZakazkaForm(instance=prirazeni)
 
     return render(request, 'upravit_prirazeni_form.html', {
-        'prirazeni': prirazeni
+        'form': form,
+        'zakazka_id': zakazka_id,
+        'prirazeni': prirazeni,
     })
 
 

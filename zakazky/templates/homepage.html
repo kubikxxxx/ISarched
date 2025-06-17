@@ -94,9 +94,7 @@
                                 ???
                             {% endif %}
                         </div>
-                        <a href="?detail_zakazka=
-                                {{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
-                           class="btn btn-sm btn-primary">Detail</a>
+                        <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}" class="btn btn-sm btn-primary">Detail</a>
                         {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}"
                                             class="btn btn-sm btn-secondary">Zaměstnanci</a>{% endif %}
                     </div>

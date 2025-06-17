@@ -63,7 +63,7 @@ class ZakazkaForm(forms.ModelForm):
         strip=True
     )
 
-    plna_moc = forms.BooleanField(label='Plná moc')
+    plna_moc = forms.BooleanField(label='Plná moc', required=False)
 
     class Meta:
         model = Zakazka
@@ -275,7 +275,7 @@ class RozsahPraceForm(forms.ModelForm):
 
 class ZamestnanecZakazkaForm(forms.ModelForm):
     zamestnanec = forms.ModelChoiceField(
-        queryset=Zamestnanec.objects.all(),  # nebo upravený filtr
+        queryset=Zamestnanec.objects.all(),
         label='Zaměstnanec',
         widget=forms.Select(attrs={'class': 'form-select'})
     )

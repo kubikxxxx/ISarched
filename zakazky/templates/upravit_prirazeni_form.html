@@ -1,32 +1,40 @@
-<h2>Upravit přiřazení: {{ prirazeni.zamestnanec.jmeno }} {{ prirazeni.zamestnanec.prijmeni }}</h2>
+{% load static %}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Upravit přiřazení</title>
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+    <style>
+        body {
+            padding: 30px;
+            background-color: #f8f9fa;
+        }
+        .form-container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 2rem;
+            border-radius: .5rem;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+<div class="form-container">
+    <h3 class="mb-4">Upravit přiřazení: {{ prirazeni.zamestnanec.jmeno }} {{ prirazeni.zamestnanec.prijmeni }}</h3>
 
-<form method="post">
-    {% csrf_token %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
 
-    <label>Zaměstnanec:</label>
-    <select name="zamestnanec" required>
-        {% for zam in zamestnanci %}
-            <option value="{{ zam.id }}" {% if zam.id == prirazeni.zamestnanec.id %}selected{% endif %}>
-                {{ zam.jmeno }} {{ zam.prijmeni }}
-            </option>
-        {% endfor %}
-    </select><br><br>
+        <div class="d-flex justify-content-between mt-3">
+            <a href="{% url 'homepage' %}?detail_zamestnanci={{ zakazka_id }}" class="btn btn-secondary">Zpět</a>
+            <button type="submit" class="btn btn-primary">Uložit změny</button>
+        </div>
+    </form>
+</div>
 
-    <label>Počet hodin:</label>
-    <input type="number" name="hodiny" value="{{ prirazeni.prideleno_hodin }}" required><br><br>
-
-    <label>Prémie (odhad):</label>
-    <input type="number" step="0.01" name="premie_predpoklad" value="{{ prirazeni.premie_predpoklad }}"><br><br>
-
-    <label>Prémie (skutečnost):</label>
-    <input type="number" step="0.01" name="premie_skutecnost" value="{{ prirazeni.premie_skutecnost }}"><br><br>
-
-    <label>Datum přidělení:</label>
-    <input type="date" name="datum_prideleni" value="{{ prirazeni.datum_prideleni|date:'Y-m-d' }}"><br><br>
-
-    <label>Popis:</label><br>
-    <textarea name="popis" rows="3" cols="40">{{ prirazeni.popis }}</textarea><br><br>
-
-    <button type="submit">Uložit</button>
-    <a href="{% url 'homepage' %}?detail_zamestnanci={{ prirazeni.zakazka.id }}" class="button">Zpět</a>
-</form>
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>
