@@ -3,25 +3,26 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Vytvořit zaměstnance</title>
+    <title>Úprava zaměstnance</title>
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
 </head>
 <body>
-<div class="container mt-4">
-    <h2>Vytvořit zaměstnance</h2>
+<div class="container mt-5">
+    <h2>Úprava zaměstnance: {{ zamestnanec.jmeno }} {{ zamestnanec.prijmeni }}</h2>
     <form method="post">
         {% csrf_token %}
+        {{ form.non_field_errors }}
         {% for field in form %}
             <div class="mb-3">
                 <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
                 {{ field }}
                 {% if field.errors %}
-                    <div class="text-danger">{{ field.errors }}</div>
+                    <div class="text-danger">{{ field.errors|striptags }}</div>
                 {% endif %}
             </div>
         {% endfor %}
-        <button type="submit" class="btn btn-primary">Vytvořit</button>
-        <a href="{% url 'homepage' %}" class="btn btn-secondary">Zpět</a>
+        <a href="{% url 'homepage' %}?detail_zamestnanec={{ zamestnanec.id }}" class="btn btn-secondary">Zpět</a>
+        <button type="submit" class="btn btn-primary">Uložit změny</button>
     </form>
 </div>
 </body>

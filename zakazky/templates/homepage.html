@@ -364,10 +364,41 @@
                         <td>{{ zamestnanec_sidebar.username }}</td>
                     </tr>
                     <tr>
-                        <th>Jméno přijmení</th>
+                        <th>Jméno a příjmení</th>
                         <td>{{ zamestnanec_sidebar.jmeno }} {{ zamestnanec_sidebar.prijmeni }}</td>
                     </tr>
+                    <tr>
+                        <th>Titul</th>
+                        <td>{{ zamestnanec_sidebar.titul|default:"–" }}</td>
+                    </tr>
+                    {% if is_admin %}
+                    <tr>
+                        <th>Datum nástupu</th>
+                        <td>{{ zamestnanec_sidebar.datum_nastup|date:"d.m.Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Sazba za hodinu</th>
+                        <td>{{ zamestnanec_sidebar.sazba_hod }} Kč</td>
+                    </tr>
+                    <tr>
+                        <th>Sazba za km</th>
+                        <td>{{ zamestnanec_sidebar.sazba_km|default:"–" }} Kč</td>
+                    </tr>
+                    <tr>
+                        <th>Aktivní</th>
+                        <td>{{ zamestnanec_sidebar.is_active|yesno:"Ano,Ne" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Administrátor</th>
+                        <td>{{ zamestnanec_sidebar.is_admin|yesno:"Ano,Ne" }}</td>
+                    </tr>
+                    {% endif %}
                 </table>
+
+                {% if is_admin %}
+                    <a href="{% url 'employee_edit' zamestnanec_sidebar.id %}" class="btn btn-primary">Upravit zaměstnance</a>
+{#                    <a href="{% url 'change_password' zamestnanec_sidebar.id %}" class="btn btn-warning me-2">Změnit heslo</a>#}
+                {% endif %}
 
             {% elif subdodavatel_sidebar %}
                 <h5>Detail subdodavatele</h5>

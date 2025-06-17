@@ -4,7 +4,7 @@ from email.policy import default
 
 from django import forms
 from django.forms import DateInput, Textarea
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
 from django.contrib.auth.forms import UserCreationForm
 from django.utils.timezone import now
 from django.forms import modelformset_factory
@@ -299,3 +299,21 @@ RozsahPraceFormSet = modelformset_factory(
     extra=1,
     # can_delete=True
 )
+
+class CustomPasswordChangeForm(PasswordChangeForm):
+    old_password = forms.CharField(
+        label="Staré heslo",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "current-password"}),
+    )
+    new_password1 = forms.CharField(
+        label="Nové heslo",
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}),
+        strip=False,
+        help_text=None,
+    )
+    new_password2 = forms.CharField(
+        label="Potvrzení nového hesla",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}),
+    )

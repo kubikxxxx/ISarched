@@ -3,13 +3,15 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+from django.contrib.auth.forms import PasswordChangeForm
 from django.http import HttpResponseForbidden
+from django.contrib.auth import update_session_auth_hash
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.utils.timezone import now
 from django.db.models import Sum
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
-    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm
+    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -533,3 +535,36 @@ def toggle_rozsah_splneno(request, pk):
     rozsah.splneno = not rozsah.splneno
     rozsah.save()
     return redirect(request.META.get('HTTP_REFERER', '/'))
+
+
+@login_required
+def employee_edit_view(request, pk):
+    zamestnanec = get_object_or_404(Zamestnanec, pk=pk)
+
+    if not request.user.is_admin:
+        return redirect('homepage')
+
+    if request.method == 'POST':
+        form = EmployeeForm(request.POST, instance=zamestnanec)
+        if form.is_valid():
+            form.save()
+            return redirect('/homepage/?detail_zamestnanec=' + str(zamestnanec.id))
+    else:
+        form = EmployeeForm(instance=zamestnanec)
+
+    return render(request, 'employee_edit.html', {'form': form, 'zamestnanec': zamestnanec})
+
+@login_required
+def change_password_view(request, pk):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může měnit hesla.")
+
+    user = get_object_or_404(Zamestnanec, pk=pk)
+    form = CustomPasswordChangeForm(user, request.POST or None)
+
+    if request.method == 'POST' and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)  # zůstane přihlášený
+        return redirect('homepage')  # nebo kamkoliv zpět
+
+    return render(request, 'change_password.html', {'form': form, 'zamestnanec': user})

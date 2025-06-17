@@ -3,7 +3,7 @@ from .views import login_view, logout_view, homepage_view, create_zakazka_view, 
     client_create_view, delete_zakazka_view, edit_zakazka_view, client_edit_view, client_note_create_view, \
     zakazka_subdodavky_view, create_subdodavatel_view, create_subdodavka_view, uredni_zapis_create_view, \
     uredni_zapis_edit_view, prirazeni_view, upravit_prirazeni_view, vykaz_create_view, edit_subdodavka_view, \
-    ukoncit_zakazku_view, toggle_rozsah_splneno
+    ukoncit_zakazku_view, toggle_rozsah_splneno, employee_edit_view, change_password_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -29,5 +29,7 @@ urlpatterns = [
     path('zakazka/<int:zakazka_id>/vykaz/create/', vykaz_create_view, name='vykaz_create'),
     path('zakazka/<int:zakazka_id>/ukoncit/', ukoncit_zakazku_view, name='ukoncit_zakazku'),
     path('rozsah/<int:pk>/toggle/', toggle_rozsah_splneno, name='toggle_rozsah_splneno'),
+    path('employee/<int:pk>/edit/', employee_edit_view, name='employee_edit'),
+    path('zamestnanec/<int:pk>/zmenit-heslo/', change_password_view, name='change_password'),
 
 ]
