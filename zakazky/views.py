@@ -8,10 +8,20 @@ from django.http import HttpResponseForbidden
 from django.contrib.auth import update_session_auth_hash
 from django.utils import timezone
 from datetime import datetime, timedelta
+from django.contrib import messages
 from django.utils.timezone import now
 from django.db.models import Sum
+from simple_history.utils import update_change_reason
+from simple_history.models import HistoricalRecords
+from simple_history.utils import get_history_model_for_model
+import requests
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from .models import UredniZapis
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
-    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm
+    SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
+    EmployeeEditForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -81,9 +91,7 @@ def homepage_view(request):
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
         if zamestnanec_filter_id:
             vykazy_qs = vykazy_qs.filter(zamestnanec_id=zamestnanec_filter_id)
-        vykazy = zakazka_detail.zakazkazamestnanec_set \
-            .select_related('zamestnanec') \
-            .order_by('-den_prace')
+        vykazy = vykazy_qs.select_related('zamestnanec').order_by('-den_prace')
     arched_subs_count = 0
     arched_subs_sum = 0
     if zakazka_detail:
@@ -98,19 +106,28 @@ def homepage_view(request):
     zbyva_hodin = 0
     barva_zbyva = "success"
     progress_percent = 0
-
+    predpokladany_cas = 0
     if zakazka_detail:
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
-        for vykaz in vykazy_qs:
+
+        if request.user.is_admin:
+            relevantni_vykazy = vykazy_qs
+            predpokladany_cas = zakazka_detail.predpokladany_cas or 0
+        else:
+            relevantni_vykazy = vykazy_qs.filter(zamestnanec=request.user)
+            predpokladany_cas = ZamestnanecZakazka.objects.filter(
+                zakazka=zakazka_detail,
+                zamestnanec=request.user
+            ).aggregate(Sum('prideleno_hodin'))['prideleno_hodin__sum'] or 0
+
+        for vykaz in relevantni_vykazy:
             if vykaz.cas_od and vykaz.cas_do:
                 dt_od = datetime.combine(datetime.today(), vykaz.cas_od)
                 dt_do = datetime.combine(datetime.today(), vykaz.cas_do)
                 rozdil = dt_do - dt_od
                 odpracovano_hodin += rozdil.total_seconds() / 3600
 
-        predpokladany_cas = zakazka_detail.predpokladany_cas or 0
         zbyva_hodin = predpokladany_cas - odpracovano_hodin
-
         if predpokladany_cas > 0:
             podil = zbyva_hodin / predpokladany_cas
         else:
@@ -125,7 +142,11 @@ def homepage_view(request):
 
         if predpokladany_cas > 0:
             progress_percent = min(100, round((odpracovano_hodin / predpokladany_cas) * 100, 1))
-
+    historie_urednich_zaznamu = None
+    if zakazka_detail:
+        uredni_ids = UredniZapis.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
+        historie_urednich_zaznamu = get_history_model_for_model(UredniZapis).objects.filter(id__in=uredni_ids).order_by(
+            '-history_date')
     return render(request, 'homepage.html', {
         'zakazky': zakazky.order_by('-id'),
         'is_admin': request.user.is_admin,
@@ -153,11 +174,12 @@ def homepage_view(request):
         'zamestnanci_v_zakazce': ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail).values_list(
             'zamestnanec__id', 'zamestnanec__jmeno', 'zamestnanec__prijmeni').distinct(),
         'vykazy_zamestnanec': zamestnanec_filter_id,
-        'odpracovano_hodin': round(odpracovano_hodin, 1),
-        'zbyva_hodin': round(zbyva_hodin, 1),
+        'odpracovano_hodin': odpracovano_hodin,
+        'zbyva_hodin': zbyva_hodin,
         'barva_zbyva': barva_zbyva,
         'progress_percent': progress_percent,
-        'predpokladany_cas': zakazka_detail.predpokladany_cas if zakazka_detail else 0,
+        'predpokladany_cas': predpokladany_cas,
+        'historie_urednich_zaznamu': historie_urednich_zaznamu,
     })
 
 
@@ -253,50 +275,42 @@ def zakazka_subdodavky_view(request, zakazka_id):
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
     subdodavky = Subdodavka.objects.all()
     subdodavatele = Subdodavatel.objects.all()
+    assigned = ZakazkaSubdodavka.objects.filter(zakazka=zakazka)
 
-    if request.method == 'POST':
+    if request.method == "POST":
         ZakazkaSubdodavka.objects.filter(zakazka=zakazka).delete()
 
-        for sub_id in request.POST.getlist('subdodavka'):
-            subdodavka = Subdodavka.objects.get(id=sub_id)
+        selected_ids = request.POST.getlist("subdodavka")
+        for sid in selected_ids:
+            sub_id = int(sid)
+            subdodavatel_id = request.POST.get(f"subdodavatel_{sub_id}")
+            cena = request.POST.get(f"cena_{sub_id}")
+            navyseni = request.POST.get(f"navyseni_{sub_id}")
+            fakturace = request.POST.get(f"fakturace_{sub_id}")
 
-            subdodavatel_id = request.POST.get(f'subdodavatel_{sub_id}')
-            subdodavatel = Subdodavatel.objects.filter(id=subdodavatel_id).first() if subdodavatel_id else None
-
-            # Čtení hodnoty ceny a navýšení – s převodem z textu na číslo
-            cena_raw = request.POST.get(f'cena_{sub_id}', '0')
-            navyseni_raw = request.POST.get(f'navyseni_{sub_id}', '0')
-
-            try:
-                cena = float(cena_raw.replace(',', '.'))
-            except ValueError:
-                cena = 0
-
-            try:
-                navyseni = float(navyseni_raw.replace(',', '.'))
-            except ValueError:
-                navyseni = 0
-
-            fakturuje = request.POST.get(f'fakturace_{sub_id}', '')
+            # ✅ Validace
+            if not subdodavatel_id or not cena or not navyseni or not fakturace:
+                messages.error(request, f"Chybí údaje pro subdodávku ID {sub_id}. Všechna pole musí být vyplněna.")
+                return redirect(request.path)
 
             ZakazkaSubdodavka.objects.create(
                 zakazka=zakazka,
-                subdodavka=subdodavka,
-                subdodavatel=subdodavatel,
+                subdodavka_id=sub_id,
+                subdodavatel_id=subdodavatel_id,
                 cena=cena,
                 navyseni=navyseni,
-                fakturuje_klientovi=(fakturuje == 'klient'),
-                fakturuje_arched=(fakturuje == 'arched'),
+                fakturuje_klientovi=(fakturace == "klient"),
+                fakturuje_arched=(fakturace == "arched"),
             )
 
-        return redirect(f'/homepage/?detail_zakazka={zakazka_id}')
+        messages.success(request, "Subdodávky byly uloženy.")
+        return redirect("homepage")  # nebo přesměrování zpět na detail zakázky
 
-    assigned = ZakazkaSubdodavka.objects.filter(zakazka=zakazka)
-    return render(request, 'zakazka_subdodavky_form.html', {
-        'zakazka': zakazka,
-        'subdodavky': subdodavky,
-        'subdodavatele': subdodavatele,
-        'assigned': assigned,
+    return render(request, "zakazka_subdodavky_form.html", {
+        "zakazka": zakazka,
+        "subdodavky": subdodavky,
+        "subdodavatele": subdodavatele,
+        "assigned": assigned,
     })
 
 
@@ -322,16 +336,19 @@ def employee_create_view(request):
 
 @login_required
 def client_create_view(request):
-    if not request.user.is_admin:
-        return HttpResponseForbidden("Pouze admin může přidávat klienty.")
-
     if request.method == 'POST':
         form = ClientForm(request.POST)
-        if form.is_valid():
-            klient = form.save()
-            text = form.cleaned_data.get('poznamka')
-            if text:
-                KlientPoznamka.objects.create(klient=klient, text=text, datum=timezone.now())
+        if 'nacist_z_ares' in request.POST:
+            ico = request.POST.get('ico')
+            data = nacti_ares(ico)
+            if data:
+                form = ClientForm(initial=data)
+        elif 'overit_dph' in request.POST:
+            dic = request.POST.get('dic')
+            spolehlivy = over_dph_spolehlivost(dic)
+            return render(request, 'client_form.html', {'form': form, 'spolehlivy': spolehlivy})
+        elif form.is_valid():
+            form.save()
             return redirect('homepage')
     else:
         form = ClientForm()
@@ -436,6 +453,8 @@ def uredni_zapis_create_view(request, zakazka_id):
         if form.is_valid():
             zapis = form.save(commit=False)
             zapis.zakazka = zakazka
+            zapis.vytvoril = request.user
+            zapis.splneno = form.cleaned_data.get('splneno', False)
             zapis.save()
             return redirect(f'/homepage/?detail_zakazka={zakazka_id}')
     else:
@@ -538,33 +557,103 @@ def toggle_rozsah_splneno(request, pk):
 
 
 @login_required
-def employee_edit_view(request, pk):
-    zamestnanec = get_object_or_404(Zamestnanec, pk=pk)
-
-    if not request.user.is_admin:
-        return redirect('homepage')
+def change_password_view(request, zamestnanec_id):
+    zamestnanec = get_object_or_404(Zamestnanec, id=zamestnanec_id)
 
     if request.method == 'POST':
-        form = EmployeeForm(request.POST, instance=zamestnanec)
+        form = CustomPasswordChangeForm(zamestnanec, request.POST)
         if form.is_valid():
             form.save()
-            return redirect('/homepage/?detail_zamestnanec=' + str(zamestnanec.id))
+            return redirect('homepage')
     else:
-        form = EmployeeForm(instance=zamestnanec)
+        form = CustomPasswordChangeForm(zamestnanec)
 
-    return render(request, 'employee_edit.html', {'form': form, 'zamestnanec': zamestnanec})
+    return render(request, 'change_password.html', {
+        'form': form,
+        'zamestnanec': zamestnanec
+    })
+
+
+@require_POST
+@csrf_exempt
+def nacti_ares(request):
+    ico = request.POST.get("ico")
+    if not ico:
+        return JsonResponse({"error": "IČO není zadáno"}, status=400)
+
+    url = f"https://wwwinfo.mfcr.cz/cgi-bin/ares/darv_bas.cgi?ico={ico}"
+    try:
+        r = requests.get(url)
+        if r.status_code != 200:
+            return JsonResponse({"error": "Chyba při dotazu na ARES"}, status=500)
+
+        from xml.etree import ElementTree as ET
+        root = ET.fromstring(r.content)
+        ns = {'are': 'http://wwwinfo.mfcr.cz/ares/xml_doc/schemas/ares/ares_answer/v_1.0.3'}
+
+        zaznam = root.find('.//are:ZAU', ns)
+        if zaznam is None:
+            return JsonResponse({"error": "Záznam nebyl nalezen"}, status=404)
+
+        nazev = zaznam.findtext('are:OF', default='', namespaces=ns)
+        dic = zaznam.findtext('are:DIC', default='', namespaces=ns)
+        ulice = zaznam.findtext('are:AD/are:NU', default='', namespaces=ns)
+        obec = zaznam.findtext('are:AD/are:N', default='', namespaces=ns)
+        psc = zaznam.findtext('are:AD/are:PSC', default='', namespaces=ns)
+
+        return JsonResponse({
+            "nazev": nazev,
+            "dic": dic,
+            "ulice": ulice,
+            "obec": obec,
+            "psc": psc
+        })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_POST
+@csrf_exempt
+def over_dph_spolehlivost(request):
+    dic = request.POST.get("dic")
+    if not dic:
+        return JsonResponse({"error": "DIČ není zadáno"}, status=400)
+
+    url = f"https://adisreg.mfcr.cz/adistc/adis/idpr_pub/dpr_info.jsp?dic={dic}&obdobi=2025"
+    try:
+        r = requests.get(url, timeout=5)
+        obsah = r.text
+        spolehlivy = "je spolehlivým plátcem" in obsah.lower()
+        return JsonResponse({"spolehlivy": spolehlivy})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 @login_required
-def change_password_view(request, pk):
-    if not request.user.is_admin:
-        return HttpResponseForbidden("Pouze administrátor může měnit hesla.")
+def edit_subdodavatel_view(request, subdodavatel_id):
+    subdodavatel = get_object_or_404(Subdodavatel, id=subdodavatel_id)
+    if request.method == 'POST':
+        form = SubdodavatelForm(request.POST, instance=subdodavatel)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Subdodavatel byl úspěšně upraven.")
+            return redirect('homepage')  # nebo redirect zpět na detail zakázky
+    else:
+        form = SubdodavatelForm(instance=subdodavatel)
 
-    user = get_object_or_404(Zamestnanec, pk=pk)
-    form = CustomPasswordChangeForm(user, request.POST or None)
+    return render(request, 'subdodavatel_form.html', {'form': form, 'subdodavatel': subdodavatel})
 
-    if request.method == 'POST' and form.is_valid():
-        user = form.save()
-        update_session_auth_hash(request, user)  # zůstane přihlášený
-        return redirect('homepage')  # nebo kamkoliv zpět
 
-    return render(request, 'change_password.html', {'form': form, 'zamestnanec': user})
+@login_required
+def edit_employee_view(request, zamestnanec_id):
+    zamestnanec = get_object_or_404(Zamestnanec, id=zamestnanec_id)
+    if request.method == 'POST':
+        form = EmployeeEditForm(request.POST, instance=zamestnanec)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Zaměstnanec byl úspěšně upraven.")
+            return redirect('homepage')
+    else:
+        form = EmployeeEditForm(instance=zamestnanec)
+
+    return render(request, 'employee_form.html', {'form': form, 'zamestnanec': zamestnanec})

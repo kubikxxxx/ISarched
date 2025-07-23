@@ -117,7 +117,7 @@ class ZakazkaForm(forms.ModelForm):
 
 
 class EmployeeForm(UserCreationForm):
-    username = forms.CharField(label='Uživatelské jméno')
+    username = forms.CharField(label='Uživatelské jméno (přihlašovací)')
     jmeno = forms.CharField(label='Jméno', max_length=255)
     prijmeni = forms.CharField(label='Příjmení', max_length=255)
     titul = forms.CharField(label='Titul', max_length=255, required=False)
@@ -135,6 +135,7 @@ class ClientForm(forms.ModelForm):
         fields = '__all__'
         labels = {
             'nazev': 'Jméno klienta',
+            'dic': 'DIČ',
             'sidlo_mesto': 'Město sídla',
             'sidlo_ulice': 'Ulice sídla',
             'sidlo_psc': 'PSČ sídla',
@@ -151,12 +152,13 @@ class ClientForm(forms.ModelForm):
         }
         widgets = {
             'nazev': forms.TextInput(attrs={'class': 'form-control'}),
-            'sidlo_mesto': forms.TextInput(attrs={'class': 'form-control'}),
-            'sidlo_ulice': forms.TextInput(attrs={'class': 'form-control'}),
-            'sidlo_psc': forms.TextInput(attrs={'class': 'form-control'}),
+            'dic': forms.TextInput(attrs={'class': 'form-control'}),
             'ico': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'telefon': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_mesto': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_ulice': forms.TextInput(attrs={'class': 'form-control'}),
+            'sidlo_psc': forms.TextInput(attrs={'class': 'form-control'}),
             'fakturacni_nazev': forms.TextInput(attrs={'class': 'form-control'}),
             'fakturacni_mesto': forms.TextInput(attrs={'class': 'form-control'}),
             'fakturacni_ulice': forms.TextInput(attrs={'class': 'form-control'}),
@@ -182,16 +184,29 @@ class SubdodavkaForm(forms.ModelForm):
 
 
 class SubdodavatelForm(forms.ModelForm):
-    titul_pred = forms.CharField(label='Titul před', max_length=50)
-    titul_za = forms.CharField(label='Titul za', max_length=50)
-    jmeno = forms.CharField(label='Jméno', max_length=50)
-    prijmeni = forms.CharField(label='Přijmení', max_length=50)
-    email = forms.EmailField(label='E-mail', max_length=80)
-    telefon = forms.CharField(label='Telefon', max_length=50)
-
     class Meta:
         model = Subdodavatel
-        fields = ['titul_pred', 'jmeno', 'prijmeni', 'titul_za', 'email', 'telefon']
+        fields = ['titul_pred', 'jmeno', 'prijmeni', 'titul_za', 'email', 'telefon', 'ico', 'dic']
+        labels = {
+            'titul_pred': 'Titul před',
+            'jmeno': 'Jméno',
+            'prijmeni': 'Příjmení',
+            'titul_za': 'Titul za',
+            'email': 'E-mail',
+            'telefon': 'Telefon',
+            'ico': 'IČO',
+            'dic': 'DIČ',
+        }
+        widgets = {
+            'titul_pred': forms.TextInput(attrs={'class': 'form-control'}),
+            'jmeno': forms.TextInput(attrs={'class': 'form-control'}),
+            'prijmeni': forms.TextInput(attrs={'class': 'form-control'}),
+            'titul_za': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'telefon': forms.TextInput(attrs={'class': 'form-control'}),
+            'ico': forms.TextInput(attrs={'class': 'form-control'}),
+            'dic': forms.TextInput(attrs={'class': 'form-control'}),
+        }
 
 
 class UredniZapisForm(forms.ModelForm):
@@ -317,3 +332,25 @@ class CustomPasswordChangeForm(PasswordChangeForm):
         strip=False,
         widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "new-password"}),
     )
+
+class EmployeeEditForm(forms.ModelForm):
+    class Meta:
+        model = Zamestnanec
+        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod')
+        labels = {
+            'username': 'Uživatelské jméno (přihlašovací)',
+            'jmeno': 'Jméno',
+            'prijmeni': 'Příjmení',
+            'titul': 'Titul',
+            'is_admin': 'Administrátor',
+            'sazba_hod': 'Hodinová sazba',
+        }
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+            'jmeno': forms.TextInput(attrs={'class': 'form-control'}),
+            'prijmeni': forms.TextInput(attrs={'class': 'form-control'}),
+            'titul': forms.TextInput(attrs={'class': 'form-control'}),
+            'sazba_hod': forms.NumberInput(attrs={'class': 'form-control'}),
+            'is_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+

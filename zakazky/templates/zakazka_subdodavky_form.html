@@ -9,6 +9,7 @@
         body {
             padding: 20px;
         }
+
         .form-section {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -16,23 +17,29 @@
             padding: 1.5rem;
             margin-bottom: 1.5rem;
         }
-        .form-section h5 {
-            margin-bottom: 1rem;
-        }
     </style>
 </head>
 <body>
 <div class="container">
     <h2 class="mb-4">Přiřazení subdodávek pro zakázku: <strong>{{ zakazka.nazev }}</strong></h2>
 
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
     <form method="post">
         {% csrf_token %}
         {% for s in subdodavky %}
             {% with a=assigned|get_subdodavka:s %}
                 <div class="form-section">
+                    <div class="mb-2 fw-bold">{{ s.nazev }}</div>
+
                     <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" name="subdodavka" value="{{ s.id }}" id="check_{{ s.id }}" {% if a %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="check_{{ s.id }}">{{ s.nazev }}</label>
+                        <input class="form-check-input" type="checkbox" name="subdodavka" value="{{ s.id }}" id="check_{{ s.id }}"
+                               {% if a %}checked{% endif %}>
+                        <label class="form-check-label" for="check_{{ s.id }}">Aktivní</label>
                     </div>
 
                     <div class="mb-3">
@@ -40,7 +47,7 @@
                         <select class="form-select" name="subdodavatel_{{ s.id }}" id="subdodavatel_{{ s.id }}">
                             <option value="">-- Vyberte --</option>
                             {% for sub in subdodavatele %}
-                                <option value="{{ sub.id }}" {% if a and a.subdodavatel and a.subdodavatel.id == sub.id %}selected{% endif %}>
+                                <option value="{{ sub.id }}" {% if a and a.subdodavatel.id == sub.id %}selected{% endif %}>
                                     {{ sub.jmeno }} {{ sub.prijmeni }}
                                 </option>
                             {% endfor %}

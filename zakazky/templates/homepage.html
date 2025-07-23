@@ -94,7 +94,9 @@
                                 ???
                             {% endif %}
                         </div>
-                        <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}" class="btn btn-sm btn-primary">Detail</a>
+                        <a href="?detail_zakazka=
+                                {{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
+                           class="btn btn-sm btn-primary">Detail</a>
                         {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}"
                                             class="btn btn-sm btn-secondary">Zaměstnanci</a>{% endif %}
                     </div>
@@ -191,7 +193,7 @@
                                                     {% for r in rozsahy_prace %}
                                                         <li class="d-flex justify-content-between align-items-center">
                                                             {% if r.splneno %}
-                                                                 <span style="color: green">-{{ r.text.text }}</span>
+                                                                <span style="color: green">-{{ r.text.text }}</span>
                                                             {% else %}
                                                                 <span>-{{ r.text.text }}</span>
                                                             {% endif %}
@@ -236,36 +238,66 @@
                                     {% endfor %}
                                 </ul>
 
+
                                 <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}"
                                    class="btn btn-outline-success">+ Přidat úřední zápis</a>
+                                {% if is_admin and historie_urednich_zaznamu %}
+                                    <h6>Historie změn zápisů</h6>
+                                    <ul class="list-group mb-2">
+                                        {% for h in historie_urednich_zaznamu %}
+                                            <li class="list-group-item small">
+                                                {{ h.history_date|date:"d.m.Y H:i" }} –
+                                                {% if h.history_type == "+" %}
+                                                    <strong>Vytvořeno</strong>
+                                                {% elif h.history_type == "~" %}
+                                                    <strong>Upraveno</strong>
+                                                {% elif h.history_type == "-" %}
+                                                    <strong>Smazáno</strong>
+                                                {% endif %}
+                                                {% if h.history_user %}
+                                                    uživatelem
+                                                    <strong>
+                                                        {{ h.history_user.get_full_name|default:h.history_user.username }}
+                                                    </strong>
+                                                {% else %}
+                                                    <em>(neznámý uživatel)</em>
+                                                {% endif %}
+                                                <br>
+                                                <em>{{ h.popis|default:"(prázdný popis)"|truncatechars:100 }}</em>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
                             </div>
                             <div class="col-md-7">
                                 <h5>Výkazy práce</h5>
                                 <p class="mb-1">
                                     {% if is_admin %}
-                                    Přiděleno celkem: <strong>{{ predpokladany_cas }} h</strong>
-                                    Odpracováno celkem: <strong>{{ odpracovano_hodin }} h</strong>
-                                    Zbývá celkem:
-                                    <span class="text-{{ barva_zbyva }}"><strong>{{ zbyva_hodin }} h</strong></span>
-                                        {% else %}
-                                    Přiděleno: {{ predpokladany_cas }} h
-                                    Odpracováno: {{ odpracovano_hodin }} h
-                                    Zbývá:
-                                    <span class="text-{{ barva_zbyva }}">{{ zbyva_hodin }} h</span>
-                                        {% endif %}
+                                        Přiděleno celkem: <strong>{{ predpokladany_cas }} h</strong>,
+                                        Odpracováno: <strong>{{ odpracovano_hodin }} h</strong>,
+                                        Zbývá: <strong class="text-{{ barva_zbyva }}">{{ zbyva_hodin }} h</strong>
+                                    {% else %}
+                                        Přiděleno: {{ predpokladany_cas }} h,
+                                        Odpracováno: {{ odpracovano_hodin }} h,
+                                        Zbývá: <span class="text-{{ barva_zbyva }}">{{ zbyva_hodin }} h</span>
+                                    {% endif %}
                                 </p>
 
-                                <div class="progress" style="height: 25px;">
+                                <!-- PROGRESS BAR -->
+                                <div class="progress mb-3" style="height: 25px;">
                                     <div
                                             class="progress-bar bg-{{ barva_zbyva }}"
                                             role="progressbar"
-                                            style="width: {{ progress_percent }}%;"
-                                            -aria-valuenow="{{ zbyva_hodin }}"
+                                            style="width: {{ progress_percent|floatformat:0 }}%;"
+                                            aria-valuenow="{{ odpracovano_hodin }}"
                                             aria-valuemin="0"
-                                            aria-valuemax="{{ predpokladany_cas|floatformat:1 }}"
+                                            aria-valuemax="100"
                                     >
+                                        {{ odpracovano_hodin|floatformat:1 }}
                                     </div>
                                 </div>
+
+                                <!-- FILTR ZAMĚSTNANCŮ -->
                                 {% if is_admin %}
                                     <form method="get" class="mb-2">
                                         <input type="hidden" name="detail_zakazka" value="{{ zakazka_detail.id }}">
@@ -286,15 +318,17 @@
                                         </select>
                                     </form>
                                 {% endif %}
+
+                                <!-- VÝPIS VÝKAZŮ -->
                                 <ul class="list-group mb-2">
                                     {% for z in vykazy %}
                                         {% if is_admin or z.zamestnanec.id == request.user.id %}
                                             <li class="list-group-item" onclick="toggleFullText(this)">
-                                                <div class="d-flex flex-wrap align-items-center">
-                                                    <strong class="me-1">{{ z.den_prace|date:"d.m.Y" }}</strong>
-                                                    <span class="me-1">– {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }},</span>
-                                                    <span class="me-1">{{ z.cas_od }}–{{ z.cas_do }},</span>
-                                                    <span class="me-1">{{ z.najete_km|default:"0" }} km;</span>
+                                                <div class="d-flex flex-wrap align-items-start">
+                                                    <strong class="me-2">{{ z.den_prace|date:"d.m.Y" }}</strong>
+                                                    <span class="me-2">– {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}</span>
+                                                    <span class="me-2">{{ z.cas_od }}–{{ z.cas_do }}</span>
+                                                    <span class="me-2">{{ z.najete_km|default:"0" }} km;</span>
                                                     <span class="vykaz-popis short one-line">{{ z.popis }}</span>
                                                     <span class="vykaz-popis full d-none">{{ z.popis }}</span>
                                                 </div>
@@ -304,6 +338,7 @@
                                         <li class="list-group-item">Žádné záznamy.</li>
                                     {% endfor %}
                                 </ul>
+
                                 <a href="{% url 'vykaz_create' zakazka_detail.id %}"
                                    class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
                             </div>
@@ -372,32 +407,33 @@
                         <td>{{ zamestnanec_sidebar.titul|default:"–" }}</td>
                     </tr>
                     {% if is_admin %}
-                    <tr>
-                        <th>Datum nástupu</th>
-                        <td>{{ zamestnanec_sidebar.datum_nastup|date:"d.m.Y" }}</td>
-                    </tr>
-                    <tr>
-                        <th>Sazba za hodinu</th>
-                        <td>{{ zamestnanec_sidebar.sazba_hod }} Kč</td>
-                    </tr>
-                    <tr>
-                        <th>Sazba za km</th>
-                        <td>{{ zamestnanec_sidebar.sazba_km|default:"–" }} Kč</td>
-                    </tr>
-                    <tr>
-                        <th>Aktivní</th>
-                        <td>{{ zamestnanec_sidebar.is_active|yesno:"Ano,Ne" }}</td>
-                    </tr>
-                    <tr>
-                        <th>Administrátor</th>
-                        <td>{{ zamestnanec_sidebar.is_admin|yesno:"Ano,Ne" }}</td>
-                    </tr>
+                        <tr>
+                            <th>Datum nástupu</th>
+                            <td>{{ zamestnanec_sidebar.datum_nastup|date:"d.m.Y" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Sazba za hodinu</th>
+                            <td>{{ zamestnanec_sidebar.sazba_hod }} Kč</td>
+                        </tr>
+                        <tr>
+                            <th>Sazba za km</th>
+                            <td>{{ zamestnanec_sidebar.sazba_km|default:"–" }} Kč</td>
+                        </tr>
+                        <tr>
+                            <th>Aktivní</th>
+                            <td>{{ zamestnanec_sidebar.is_active|yesno:"Ano,Ne" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Administrátor</th>
+                            <td>{{ zamestnanec_sidebar.is_admin|yesno:"Ano,Ne" }}</td>
+                        </tr>
                     {% endif %}
                 </table>
 
                 {% if is_admin %}
-                    <a href="{% url 'employee_edit' zamestnanec_sidebar.id %}" class="btn btn-primary">Upravit zaměstnance</a>
-{#                    <a href="{% url 'change_password' zamestnanec_sidebar.id %}" class="btn btn-warning me-2">Změnit heslo</a>#}
+                    <a href="{% url 'employee_edit' zamestnanec_sidebar.id %}" class="btn btn-primary">Upravit
+                        zaměstnance</a>
+                    {#                    <a href="{% url 'change_password' zamestnanec_sidebar.id %}" class="btn btn-warning me-2">Změnit heslo</a>#}
                 {% endif %}
 
             {% elif subdodavatel_sidebar %}
@@ -416,12 +452,12 @@
                         <td>{{ subdodavatel_sidebar.telefon }}</td>
                     </tr>
                 </table>
+                <a href="{% url 'edit_subdodavatel' subdodavatel_sidebar.id %}" class="btn btn-sm btn-primary mb-2">
+                    Upravit subdodavatele
+                </a>
 
             {% elif subdodavka_sidebar %}
                 <h5>Detail subdodávky</h5>
-                {% if is_admin %}
-                    <a href="{% url 'edit_subdodavka' subdodavka_sidebar.id %}" class="btn btn-sm btn-primary mb-2">Upravit</a>
-                {% endif %}
                 <table class="table table-sm">
                     <tr>
                         <th>Název</th>
@@ -432,6 +468,9 @@
                         <td>{{ subdodavka_sidebar.aktivni|yesno:"Ano,Ne" }}</td>
                     </tr>
                 </table>
+                {% if is_admin %}
+                    <a href="{% url 'edit_subdodavka' subdodavka_sidebar.id %}" class="btn btn-sm btn-primary mb-2">Upravit</a>
+                {% endif %}
             {% else %}
                 <p>Vyberte entitu pro zobrazení detailu.</p>
             {% endif %}
@@ -548,17 +587,18 @@
 
             </div>
         </div>
-    </div>ooo
     </div>
-    <script>
-        function toggleFullText(liElement) {
-            const shortText = liElement.querySelector('.vykaz-popis.short');
-            const fullText = liElement.querySelector('.vykaz-popis.full');
+    ooo
+</div>
+<script>
+    function toggleFullText(liElement) {
+        const shortText = liElement.querySelector('.vykaz-popis.short');
+        const fullText = liElement.querySelector('.vykaz-popis.full');
 
-            shortText.classList.toggle('d-none');
-            fullText.classList.toggle('d-none');
-        }
-    </script>
-    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+        shortText.classList.toggle('d-none');
+        fullText.classList.toggle('d-none');
+    }
+</script>
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>

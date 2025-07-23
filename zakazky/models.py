@@ -2,6 +2,7 @@
 from django.conf import settings
 from django.db import models
 from django.utils.timezone import now
+from simple_history.models import HistoricalRecords
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 
 
@@ -54,6 +55,7 @@ class Klient(models.Model):
     sidlo_ulice = models.CharField(max_length=255)
     sidlo_psc = models.CharField(max_length=255)
     ico = models.CharField(max_length=50)
+    dic = models.CharField(max_length=20, blank=True, null=True, verbose_name="DIČ")
     email = models.EmailField(max_length=255)
     telefon = models.CharField(max_length=50)
     fakturacni_nazev = models.CharField(max_length=255, null=True, blank=True)
@@ -102,6 +104,10 @@ class Subdodavatel(models.Model):
     jmeno = models.TextField()
     prijmeni = models.TextField()
     titul_za = models.TextField(null=True, blank=True)
+    telefon = models.CharField(max_length=50, null=True, blank=True)
+    email = models.EmailField(max_length=255, null=True, blank=True)
+    ico = models.CharField("IČO", max_length=20, null=True, blank=True)
+    dic = models.CharField("DIČ", max_length=20, null=True, blank=True)
 
     class Meta:
         db_table = 'Subdodavatel'
@@ -111,8 +117,9 @@ class Subdodavatel(models.Model):
         return f"{self.titul_pred or ''} {self.jmeno} {self.prijmeni} {self.titul_za or ''}".strip()
 
 
+
 class Subdodavka(models.Model):
-    nazev = models.TextField()
+    nazev = models.TextField(max_length=50)
     aktivni = models.BooleanField(default=1)
 
     class Meta:
@@ -147,12 +154,22 @@ class Zakazka(models.Model):
         return f"{self.zakazka_cislo} – {self.nazev}"
 
 
+
 class UredniZapis(models.Model):
     zakazka = models.ForeignKey('Zakazka', on_delete=models.CASCADE, db_column='ZakazkaId')
     popis = models.TextField()
     datum = models.DateTimeField()
     termin_do = models.DateTimeField(null=True, blank=True)
     splneno = models.BooleanField()
+    vytvoril = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='zaznamy_uredni',
+        verbose_name="Záznam přidal"
+    )
+    history = HistoricalRecords()
 
     class Meta:
         db_table = 'UredniZapis'
