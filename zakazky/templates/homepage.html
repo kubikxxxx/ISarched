@@ -94,11 +94,9 @@
                                 ???
                             {% endif %}
                         </div>
-                        <a href="?detail_zakazka=
-                                {{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
+                        <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
                            class="btn btn-sm btn-primary">Detail</a>
-                        {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}"
-                                            class="btn btn-sm btn-secondary">Zaměstnanci</a>{% endif %}
+                        {% if is_admin %}<a href="?detail_zamestnanci={{ zakazka.id }}" class="btn btn-sm btn-secondary">Zaměstnanci</a>{% endif %}
                     </div>
                 {% endfor %}
             </div>
@@ -114,22 +112,51 @@
             {% if selected_zamestnanci_id and zakazka_zam %}
                 <a href="{% url 'prirazeni_view' zakazka_zam.id %}" class="btn btn-primary mb-3">Přidělit
                     zaměstnance</a>
-                <h5>Přiřazení zaměstnanci</h5>
-                <ul class="list-group">
-                    {% for z in zamestnanci_prirazeni %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span>
-                                {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}
-                                (od {{ z.datum_prideleni|date:"d.m.Y" }})
-                            </span>
-                            {% if is_admin %}
-                                <a href="{% url 'upravit_prirazeni' z.id %}" class="btn btn-sm btn-outline-primary">Upravit</a>
+<h5>Přiřazení zaměstnanci</h5>
+<ul class="list-group">
+    {% for item in prirazeni_vypocty %}
+        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
+            <div class="me-3">
+                <strong>{{ item.prirazeni.zamestnanec.jmeno }} {{ item.prirazeni.zamestnanec.prijmeni }}</strong><br>
+                <small>
+                    Přiděleno: {{ item.prideleno }} h,
+                    Odpracováno: {{ item.odpracovano }} h,
+                    Zbývá: <span class="text-{{ item.barva }}">{{ item.zbyva }} h</span>
+                </small><br>
+                <small class="text-muted">Zakázka je pro zaměstnance:
+                    {% if item.vidi %}
+                        <span class="text-success fw-bold">VIDITELNÁ</span>
+                    {% else %}
+                        <span class="text-danger fw-bold">SKRYTÁ</span>
+                    {% endif %}
+                </small>
+            </div>
+
+            <div class="d-flex flex-column align-items-end">
+                {% if item.datum_ok %}
+                    <form method="post" action="{% url 'toggle_viditelnost' item.prirazeni.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-warning mb-1">
+                            {% if item.skryta %}
+                                Zobrazit
+                            {% else %}
+                                Skrýt
                             {% endif %}
-                        </li>
-                    {% empty %}
-                        <li class="list-group-item">Nebyli přiřazeni žádní zaměstnanci.</li>
-                    {% endfor %}
-                </ul>
+                        </button>
+                    </form>
+                {% endif %}
+                {% if is_admin %}
+                    <a href="{% url 'upravit_prirazeni' item.prirazeni.id %}" class="btn btn-sm btn-outline-primary">
+                        Upravit
+                    </a>
+                {% endif %}
+            </div>
+        </li>
+    {% empty %}
+        <li class="list-group-item">Nebyli přiřazeni žádní zaměstnanci.</li>
+    {% endfor %}
+</ul>
+
 
             {% elif zakazka_detail %}
                 {% if is_admin %}

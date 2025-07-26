@@ -23,10 +23,10 @@
 </head>
 <body>
 <div class="form-container">
-    {% if is_edit == 'False' %}
-        <h2 class="mb-4">Vytvořit novou zakázku</h2>
-    {% else %}
+    {% if is_edit %}
         <h2 class="mb-4">Upravit zakázku</h2>
+    {% else %}
+        <h2 class="mb-4">Vytvořit novou zakázku</h2>
     {% endif %}
 
 
@@ -64,6 +64,7 @@
                     {% endfor %}
                 </div>
             {% endif %}
+        {% if is_edit %}
             {% for f in formset %}
                 <div class="form-row mb-2 d-flex align-items-center">
                     <div class="me-2" style="flex: 1;">
@@ -80,6 +81,7 @@
                     </div>
                 </div>
             {% endfor %}
+        {% endif %}
         </div>
 
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addForm()">+ Přidat další rozsah

@@ -4,7 +4,7 @@ from .views import login_view, logout_view, homepage_view, create_zakazka_view, 
     zakazka_subdodavky_view, create_subdodavatel_view, create_subdodavka_view, uredni_zapis_create_view, \
     uredni_zapis_edit_view, prirazeni_view, upravit_prirazeni_view, vykaz_create_view, edit_subdodavka_view, \
     ukoncit_zakazku_view, toggle_rozsah_splneno, change_password_view, nacti_ares, \
-    over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view
+    over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view, toggle_viditelnost_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -35,6 +35,8 @@ urlpatterns = [
     path('subdodavatel/<int:subdodavatel_id>/edit/', edit_subdodavatel_view, name='edit_subdodavatel'),
     path('zamestnanec/<int:zamestnanec_id>/edit/', edit_employee_view, name='employee_edit'),
     path('zamestnanec/<int:zamestnanec_id>/password/', change_password_view, name='employee_password_change'),
+    path('toggle-viditelnost/<int:prirazeni_id>/', toggle_viditelnost_view, name='toggle_viditelnost'),
+
 
 
 

@@ -222,6 +222,7 @@ class ZamestnanecZakazka(models.Model):
     premie_skutecnost = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     datum_prideleni = models.DateTimeField(null=True, blank=True)
     popis = models.TextField(null=True, blank=True)
+    skryta = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'ZamestnanecZakazka'

@@ -308,13 +308,6 @@ class ZamestnanecZakazkaForm(forms.ModelForm):
         }
 
 
-RozsahPraceFormSet = modelformset_factory(
-    RozsahPrace,
-    form=RozsahPraceForm,
-    extra=1,
-    # can_delete=True
-)
-
 class CustomPasswordChangeForm(PasswordChangeForm):
     old_password = forms.CharField(
         label="Staré heslo",
@@ -354,3 +347,11 @@ class EmployeeEditForm(forms.ModelForm):
             'is_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
+
+RozsahPraceFormSet = modelformset_factory(
+    RozsahPrace,
+    form=RozsahPraceForm,
+    fields=['id', 'text', 'novy_text'],
+    extra=1,
+    can_delete=True
+)

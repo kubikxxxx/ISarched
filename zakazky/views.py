@@ -55,7 +55,8 @@ def homepage_view(request):
     else:
         zakazky = Zakazka.objects.filter(
             prirazeni__zamestnanec=request.user,
-            prirazeni__datum_prideleni__lte=now()
+            prirazeni__datum_prideleni__lte=now(),
+            prirazeni__skryta=False
         )
 
     selected_zamestnanec_id = request.GET.get("detail_zamestnanec")
@@ -147,8 +148,48 @@ def homepage_view(request):
         uredni_ids = UredniZapis.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
         historie_urednich_zaznamu = get_history_model_for_model(UredniZapis).objects.filter(id__in=uredni_ids).order_by(
             '-history_date')
+    prirazeni_vypocty = []
+    if zamestnanci_prirazeni:
+        for prirazeni in zamestnanci_prirazeni:
+            prideleno = prirazeni.prideleno_hodin or 0
+            odpracovano = 0
+            vykazy = ZakazkaZamestnanec.objects.filter(
+                zakazka=zakazka_zam,
+                zamestnanec=prirazeni.zamestnanec
+            )
+            for v in vykazy:
+                if v.cas_od and v.cas_do:
+                    odpracovano += (
+                        datetime.combine(datetime.today(), v.cas_do) -
+                        datetime.combine(datetime.today(), v.cas_od)
+                    ).total_seconds() / 3600
+            zbyva = prideleno - odpracovano
+            if prideleno > 0:
+                podil = zbyva / prideleno
+            else:
+                podil = 1
+            if podil <= 0:
+                barva = "danger"
+            elif podil <= 0.1:
+                barva = "warning"
+            else:
+                barva = "success"
+
+            vidi = prirazeni.datum_prideleni and prirazeni.datum_prideleni <= now() and not prirazeni.skryta
+            datum_ok = prirazeni.datum_prideleni and prirazeni.datum_prideleni <= now()
+            prirazeni_vypocty.append({
+                'prirazeni': prirazeni,
+                'prideleno': prideleno,
+                'odpracovano': round(odpracovano, 1),
+                'zbyva': round(zbyva, 1),
+                'barva': barva,
+                'skryta': prirazeni.skryta,
+                'vidi': vidi,
+                'datum_ok': datum_ok,
+            })
+
     return render(request, 'homepage.html', {
-        'zakazky': zakazky.order_by('-id'),
+        'zakazky': zakazky.order_by('zakazka_cislo'),
         'is_admin': request.user.is_admin,
         'zamestnanci': zamestnanci,
         'klienti': klienti,
@@ -180,6 +221,7 @@ def homepage_view(request):
         'progress_percent': progress_percent,
         'predpokladany_cas': predpokladany_cas,
         'historie_urednich_zaznamu': historie_urednich_zaznamu,
+        'prirazeni_vypocty': prirazeni_vypocty,
     })
 
 
@@ -253,7 +295,8 @@ def edit_zakazka_view(request, zakazka_id):
     return render(request, 'zakazka_form.html', {
         'form': form,
         'formset': formset,
-        'is_edit': 'True'
+        'is_edit': 'True',
+        'zakazka': zakazka,
     })
 
 
@@ -657,3 +700,15 @@ def edit_employee_view(request, zamestnanec_id):
         form = EmployeeEditForm(instance=zamestnanec)
 
     return render(request, 'employee_form.html', {'form': form, 'zamestnanec': zamestnanec})
+
+@require_POST
+@login_required
+def toggle_viditelnost_view(request, prirazeni_id):
+    prirazeni = get_object_or_404(ZamestnanecZakazka, id=prirazeni_id)
+
+    # Změna viditelnosti pouze pokud má být viditelný (datum přidělení ≤ dnes)
+    if prirazeni.datum_prideleni and prirazeni.datum_prideleni <= now():
+        prirazeni.skryta = not prirazeni.skryta
+        prirazeni.save()
+
+    return redirect(f'/homepage/?detail_zamestnanci={prirazeni.zakazka.id}')
