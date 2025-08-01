@@ -55,8 +55,8 @@
                     {% endif %}
                 </td>
                 <td>{{ h|getattribute:"popis"|default:"—" }}</td>
-                <td>{{ h|getattribute:"datum"|date:"d.m.Y H:i"|default:"—" }}</td>
-                <td>{{ h|getattribute:"termin_do"|date:"d.m.Y H:i"|default:"—" }}</td>
+                <td>{{ h|getattribute:"datum"|date:"d.m.Y"|default:"—" }}</td>
+                <td>{{ h|getattribute:"termin_do"|date:"d.m.Y"|default:"—" }}</td>
             </tr>
             {% endfor %}
         </tbody>
