@@ -18,7 +18,7 @@ import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import UredniZapis
+from .models import UredniZapis, RozsahText
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
     EmployeeEditForm
@@ -144,10 +144,14 @@ def homepage_view(request):
         if predpokladany_cas > 0:
             progress_percent = min(100, round((odpracovano_hodin / predpokladany_cas) * 100, 1))
     historie_urednich_zaznamu = None
+    historie_vykazu_prace = None
     if zakazka_detail:
         uredni_ids = UredniZapis.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
         historie_urednich_zaznamu = get_history_model_for_model(UredniZapis).objects.filter(id__in=uredni_ids).order_by(
             '-history_date')
+        vykaz_ids = ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
+        historie_vykazu_prace = get_history_model_for_model(ZakazkaZamestnanec).objects.filter(
+            id__in=vykaz_ids).order_by('-history_date')
     prirazeni_vypocty = []
     if zamestnanci_prirazeni:
         for prirazeni in zamestnanci_prirazeni:
@@ -221,6 +225,7 @@ def homepage_view(request):
         'progress_percent': progress_percent,
         'predpokladany_cas': predpokladany_cas,
         'historie_urednich_zaznamu': historie_urednich_zaznamu,
+        'historie_vykazu_prace': historie_vykazu_prace,
         'prirazeni_vypocty': prirazeni_vypocty,
     })
 
@@ -254,7 +259,7 @@ def create_zakazka_view(request):
     return render(request, 'zakazka_form.html', {
         'form': form,
         'formset': formset,
-        'is_edit': 'False'
+        'is_edit': False
     })
 
 
@@ -267,37 +272,21 @@ def edit_zakazka_view(request, zakazka_id):
 
     if request.method == 'POST':
         form = ZakazkaForm(request.POST, instance=zakazka)
-        formset = RozsahPraceFormSet(request.POST, queryset=RozsahPrace.objects.filter(zakazka=zakazka))
 
-        if form.is_valid() and formset.is_valid():
+        if form.is_valid():
             form.save()
-
-            for subform in formset:
-                if subform.cleaned_data:
-                    if subform.cleaned_data.get('DELETE', False):
-                        if subform.instance.pk:
-                            subform.instance.delete()
-                    else:
-                        rozsah = subform.save(commit=False)
-                        rozsah.zakazka = zakazka
-                        if not rozsah.vytvoril:
-                            rozsah.vytvoril = request.user
-                        rozsah.save()
-
             return redirect(f'/homepage/?detail_zakazka={zakazka_id}')
         else:
             print("Form errors:", form.errors)
-            print("Formset errors:", formset.errors)
     else:
         form = ZakazkaForm(instance=zakazka)
-        formset = RozsahPraceFormSet(queryset=RozsahPrace.objects.filter(zakazka=zakazka))
 
     return render(request, 'zakazka_form.html', {
         'form': form,
-        'formset': formset,
         'is_edit': 'True',
         'zakazka': zakazka,
     })
+
 
 
 @login_required
@@ -712,3 +701,96 @@ def toggle_viditelnost_view(request, prirazeni_id):
         prirazeni.save()
 
     return redirect(f'/homepage/?detail_zamestnanci={prirazeni.zakazka.id}')
+
+
+
+
+
+
+@login_required
+def vykaz_edit_view(request, vykaz_id):
+    vykaz = get_object_or_404(ZakazkaZamestnanec, id=vykaz_id)
+
+    if request.method == 'POST':
+        form = VykazForm(request.POST, instance=vykaz)
+        if form.is_valid():
+            form.save()
+            return redirect(f'/homepage/?detail_zakazka={vykaz.zakazka.id}')
+    else:
+        form = VykazForm(instance=vykaz)
+
+    return render(request, 'vykaz_edit.html', {
+        'form': form,
+        'vykaz': vykaz,
+        'zakazka_id': vykaz.zakazka.id,
+    })
+
+@login_required
+def historie_zapisu_view(request, zapis_id):
+    zapis = get_object_or_404(UredniZapis, id=zapis_id)
+    HistoryModel = get_history_model_for_model(UredniZapis)
+    historie_qs = HistoryModel.objects.filter(id=zapis_id).order_by('-history_date')
+    historie = list(historie_qs)  # <== převod na list
+    model_fields = [f for f in UredniZapis._meta.get_fields() if f.concrete and not f.many_to_many and not f.auto_created]
+
+    return render(request, 'zapis_historie.html', {
+        'zapis': zapis,
+        'historie': historie,
+        'model_fields': model_fields,
+    })
+
+@login_required
+def vykaz_history_view(request, vykaz_id):
+    vykaz = get_object_or_404(ZakazkaZamestnanec, id=vykaz_id)
+    HistoryModel = get_history_model_for_model(ZakazkaZamestnanec)
+    historie_qs = HistoryModel.objects.filter(id=vykaz_id).order_by('history_date')
+
+    historie = []
+    for i, h in enumerate(historie_qs):
+        previous = historie_qs[i - 1] if i > 0 else None
+        historie.append({
+            'current': h,
+            'previous': previous
+        })
+
+    model_fields = [
+        f for f in ZakazkaZamestnanec._meta.get_fields()
+        if f.concrete and not f.many_to_many and not f.auto_created
+    ]
+
+    return render(request, 'vykaz_history.html', {
+        'vykaz': vykaz,
+        'historie': historie,
+        'model_fields': model_fields,
+    })
+
+@login_required
+def zakazka_rozsahy_view(request, zakazka_id):
+    zakazka = get_object_or_404(Zakazka, id=zakazka_id)
+    queryset = RozsahPrace.objects.filter(zakazka=zakazka)
+
+    if request.method == 'POST':
+        formset = RozsahPraceFormSet(request.POST, queryset=queryset)
+        if formset.is_valid():
+            for form in formset:
+                if form.cleaned_data.get('DELETE'):
+                    if form.instance.pk:
+                        form.instance.delete()
+                else:
+                    instance = form.save(commit=False)
+                    novy_text = form.cleaned_data.get('novy_text')
+                    if novy_text:
+                        rt, created = RozsahText.objects.get_or_create(text=novy_text)
+                        instance.rozsah_text = rt
+                    instance.zakazka = zakazka
+                    if not instance.vytvoril:
+                        instance.vytvoril = request.user
+                    instance.save()
+            return redirect('homepage')  # nebo jinam, dle navigace
+    else:
+        formset = RozsahPraceFormSet(queryset=queryset)
+
+    return render(request, 'zakazka_rozsahy.html', {
+        'zakazka': zakazka,
+        'formset': formset,
+    })

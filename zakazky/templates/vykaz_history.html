@@ -1,0 +1,86 @@
+{% load static assign_filters %}
+    <!DOCTYPE html>
+    <html lang="cs">
+    <head>
+        <meta charset="UTF-8">
+        <title>Historie výkazu práce</title>
+        <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+        <style>
+            body {
+                padding: 30px;
+                background: #f8f9fa;
+            }
+
+            .table th, .table td {
+                vertical-align: middle;
+            }
+
+            .change-old {
+                color: #dc3545;
+                font-weight: bold;
+            }
+
+            .change-new {
+                color: #198754;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+    <div class="container">
+        <h2 class="mb-4">Historie výkazu práce</h2>
+        <a href="{% url 'homepage' %}?detail_zakazka={{ vykaz.zakazka.id }}" class="btn btn-secondary mb-3">← Zpět</a>
+        <table class="table table-bordered table-striped bg-white">
+            <thead>
+            <tr>
+                <th>Datum změny</th>
+                <th>Uživatel</th>
+                <th>Typ změny</th>
+                <th>Detail změny</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for z in historie %}
+                <tr class="{% cycle 'table-light' 'table-white' %}">
+                    <td>{{ z.current.history_date|date:"d.m.Y H:i" }}</td>
+                    <td>{{ z.current.history_user|default:"—" }}</td>
+                    <td>
+                        {% if z.current.history_type == '+' %}
+                            <span class="badge bg-success">Vytvoření</span>
+                        {% elif z.current.history_type == '~' %}
+                            <span class="badge bg-warning text-dark">Úprava</span>
+                        {% elif z.current.history_type == '-' %}
+                            <span class="badge bg-danger">Smazání</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <ul class="mb-0">
+                            {% for field in model_fields %}
+                                {% with name=field.name %}
+                                    {% if z.previous %}
+                                        {% if z.previous|getattribute:name != z.current|getattribute:name %}
+                                            <li>
+                                                <strong>{{ field.verbose_name }}:</strong>
+                                                <span class="change-old">{{ z.previous|getattribute:name|default:"—" }}</span>
+                                                →
+                                                <span class="change-new">{{ z.current|getattribute:name|default:"—" }}</span>
+                                            </li>
+                                        {% endif %}
+                                    {% else %}
+                                        <li>
+                                            <strong>{{ field.verbose_name }}:</strong>
+                                            <span class="change-new">{{ z.current|getattribute:name|default:"—" }}</span>
+                                        </li>
+                                    {% endif %}
+                                {% endwith %}
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+    </body>
+    </html>

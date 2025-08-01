@@ -4,7 +4,8 @@ from .views import login_view, logout_view, homepage_view, create_zakazka_view, 
     zakazka_subdodavky_view, create_subdodavatel_view, create_subdodavka_view, uredni_zapis_create_view, \
     uredni_zapis_edit_view, prirazeni_view, upravit_prirazeni_view, vykaz_create_view, edit_subdodavka_view, \
     ukoncit_zakazku_view, toggle_rozsah_splneno, change_password_view, nacti_ares, \
-    over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view, toggle_viditelnost_view
+    over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view, toggle_viditelnost_view, historie_zapisu_view, \
+    vykaz_edit_view, vykaz_history_view, zakazka_rozsahy_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -36,8 +37,9 @@ urlpatterns = [
     path('zamestnanec/<int:zamestnanec_id>/edit/', edit_employee_view, name='employee_edit'),
     path('zamestnanec/<int:zamestnanec_id>/password/', change_password_view, name='employee_password_change'),
     path('toggle-viditelnost/<int:prirazeni_id>/', toggle_viditelnost_view, name='toggle_viditelnost'),
-
-
-
+    path('zapis/<int:zapis_id>/historie/', historie_zapisu_view, name='zapis_historie'),
+    path('vykaz/<int:vykaz_id>/edit/', vykaz_edit_view, name='vykaz_edit'),
+    path('vykaz/<int:vykaz_id>/historie/', vykaz_history_view, name='vykaz_historie'),
+    path('zakazka/<int:zakazka_id>/rozsahy/', zakazka_rozsahy_view, name='zakazka_rozsahy'),
 
 ]

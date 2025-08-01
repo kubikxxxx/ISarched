@@ -136,8 +136,8 @@ class Zakazka(models.Model):
     zakazka_cislo = models.TextField(db_column='ZakazkaCislo')
     nazev = models.TextField()
     termin = models.DateTimeField()
-    zakazka_konec_predp = models.DateTimeField(null=True, blank=True)
     zakazka_start = models.DateTimeField(null=True, blank=True)
+    zakazka_konec_predp = models.DateTimeField(null=True, blank=True)
     zakazka_konec_skut = models.DateTimeField(null=True, blank=True)
     predpokladany_cas = models.IntegerField()
     misto_stavby = models.TextField()
@@ -205,6 +205,7 @@ class ZakazkaZamestnanec(models.Model):
     cas_do = models.TimeField(null=True, blank=True, db_column='CasDo')
     popis = models.TextField(null=True, blank=True)
     najete_km = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    history = HistoricalRecords()
 
     class Meta:
         db_table = 'ZakazkaZamestnanec'

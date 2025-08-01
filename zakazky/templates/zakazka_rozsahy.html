@@ -1,0 +1,39 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Úprava rozsahů práce</title>
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+</head>
+<body>
+<div class="container mt-5">
+    <h3>Rozsahy práce – zakázka č. {{ zakazka.id }}</h3>
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Stávající text</th>
+                    <th>Nový text (pokud není v seznamu)</th>
+                    <th>Smazat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                    <tr>
+                        <td>{{ form.rozsah_text }}</td>
+                        <td>{{ form.novy_text }}</td>
+                        <td>{{ form.DELETE }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary">Uložit změny</button>
+        <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-secondary">Zpět</a>
+    </form>
+</div>
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

@@ -54,38 +54,38 @@
                 </div>
             {% endfor %}
         </div>
-        <h5 class="mt-4">Rozsahy práce</h5>
-        <div id="rozsah-formset">
-            {{ formset.management_form }}
-            {% if formset.non_form_errors %}
-                <div class="alert alert-danger">
-                    {% for error in formset.non_form_errors %}
-                        <div>{{ error }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% if is_edit %}
-            {% for f in formset %}
-                <div class="form-row mb-2 d-flex align-items-center">
-                    <div class="me-2" style="flex: 1;">
-                        {{ f.text }}
-                        {% for error in f.text.errors %}
-                            <div class="text-danger">{{ error }}</div>
+        {% if not is_edit %}
+            <h5 class="mt-4">Rozsahy práce  !!nelze upravovat!!</h5>
+            <div id="rozsah-formset">
+                {{ formset.management_form }}
+                {% if formset.non_form_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in formset.non_form_errors %}
+                            <div>{{ error }}</div>
                         {% endfor %}
                     </div>
-                    <div class="me-2" style="flex: 2;">
-                        {{ f.novy_text }}
-                        {% for error in f.novy_text.errors %}
-                            <div class="text-danger">{{ error }}</div>
-                        {% endfor %}
+                {% endif %}
+                {% for f in formset %}
+                    <div class="form-row mb-2 d-flex align-items-center">
+                        <div class="me-2" style="flex: 1;">
+                            {{ f.text }}
+                            {% for error in f.text.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="me-2" style="flex: 2;">
+                            {{ f.novy_text }}
+                            {% for error in f.novy_text.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
                     </div>
-                </div>
-            {% endfor %}
-        {% endif %}
-        </div>
+                {% endfor %}
+            </div>
 
-        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addForm()">+ Přidat další rozsah
-        </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addForm()">+ Přidat další rozsah
+            </button>
+        {% endif %}
 
 
         <div class="d-flex justify-content-between mt-4">
