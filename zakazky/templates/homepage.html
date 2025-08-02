@@ -88,8 +88,8 @@
                             {% endif %}
                         </div>
                         <div>{{ zakazka.zakazka_start|date:"d.m.Y" }} →
-                            {% if zakazka.zakazka_konec_skut %}
-                                {{ zakazka.zakazka_konec_skut|date:"d.m.Y" }}
+                            {% if zakazka.zakazka_konec_predp %}
+                                {{ zakazka.zakazka_konec_predp|date:"d.m.Y" }}
                             {% else %}
                                 ???
                             {% endif %}

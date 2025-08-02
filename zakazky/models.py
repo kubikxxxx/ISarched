@@ -1,4 +1,6 @@
 # models.py
+from datetime import datetime
+
 from django.conf import settings
 from django.db import models
 from django.utils.timezone import now
@@ -129,13 +131,12 @@ class Subdodavka(models.Model):
     def __str__(self):
         return self.nazev
 
-
 class Zakazka(models.Model):
     klient = models.ForeignKey('Klient', on_delete=models.CASCADE, db_column='ID_Klient')
     sazba = models.ForeignKey('Sazba', on_delete=models.SET_NULL, null=True, blank=True, db_column='ID_Sazba')
     zakazka_cislo = models.TextField(db_column='ZakazkaCislo')
     nazev = models.TextField()
-    termin = models.DateTimeField()
+    termin = models.DateTimeField(default=datetime(2025, 9, 1, 0, 0))  # <-- pevné výchozí datum
     zakazka_start = models.DateTimeField(null=True, blank=True)
     zakazka_konec_predp = models.DateTimeField(null=True, blank=True)
     zakazka_konec_skut = models.DateTimeField(null=True, blank=True)
