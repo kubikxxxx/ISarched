@@ -1,7 +1,9 @@
 # views.py
+from django.forms import modelformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.forms import PasswordChangeForm
 from django.http import HttpResponseForbidden
@@ -21,7 +23,7 @@ from django.views.decorators.http import require_POST
 from .models import UredniZapis, RozsahText
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
-    EmployeeEditForm
+    EmployeeEditForm, RozsahPraceForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -237,16 +239,30 @@ def create_zakazka_view(request):
 
     if request.method == 'POST':
         form = ZakazkaForm(request.POST)
-        formset = RozsahPraceFormSet(request.POST, queryset=RozsahPrace.objects.none())  # ⬅️ tady
+        formset = RozsahPraceFormSet(request.POST, queryset=RozsahPrace.objects.none())
 
         if form.is_valid() and formset.is_valid():
             zakazka = form.save()
+
             for subform in formset:
                 if subform.cleaned_data and not subform.cleaned_data.get('DELETE', False):
-                    rozsah = subform.save(commit=False)
-                    rozsah.zakazka = zakazka
-                    rozsah.vytvoril = request.user
+                    novy_text = subform.cleaned_data.get('novy_text')
+                    existujici_text = subform.cleaned_data.get('text')
+
+                    if novy_text:
+                        rozsah_text = RozsahText.objects.create(text=novy_text)
+                    elif existujici_text:
+                        rozsah_text = existujici_text
+                    else:
+                        continue  # ani jedno není vyplněno → přeskoč
+
+                    rozsah = RozsahPrace(
+                        zakazka=zakazka,
+                        text=rozsah_text,
+                        vytvoril=request.user
+                    )
                     rozsah.save()
+
             return redirect('homepage')
         else:
             print("Form errors:", form.errors)
@@ -261,6 +277,7 @@ def create_zakazka_view(request):
         'formset': formset,
         'is_edit': False
     })
+
 
 
 @login_required
@@ -767,30 +784,43 @@ def vykaz_history_view(request, vykaz_id):
 @login_required
 def zakazka_rozsahy_view(request, zakazka_id):
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
-    queryset = RozsahPrace.objects.filter(zakazka=zakazka)
+
+    RozsahPraceFormSet = modelformset_factory(
+        RozsahPrace,
+        form=RozsahPraceForm,
+        can_delete=True,
+        extra=0
+    )
 
     if request.method == 'POST':
-        formset = RozsahPraceFormSet(request.POST, queryset=queryset)
+        formset = RozsahPraceFormSet(request.POST, queryset=RozsahPrace.objects.filter(zakazka=zakazka))
         if formset.is_valid():
             for form in formset:
                 if form.cleaned_data.get('DELETE'):
                     if form.instance.pk:
                         form.instance.delete()
                 else:
-                    instance = form.save(commit=False)
                     novy_text = form.cleaned_data.get('novy_text')
+                    existujici_text = form.cleaned_data.get('text')
+
                     if novy_text:
-                        rt, created = RozsahText.objects.get_or_create(text=novy_text)
-                        instance.rozsah_text = rt
-                    instance.zakazka = zakazka
-                    if not instance.vytvoril:
-                        instance.vytvoril = request.user
-                    instance.save()
-            return redirect('homepage')  # nebo jinam, dle navigace
+                        rozsah_text = RozsahText.objects.create(text=novy_text)
+                    elif existujici_text:
+                        rozsah_text = existujici_text
+                    else:
+                        continue  # přeskoč prázdný řádek
+
+                    rozsah = form.save(commit=False)
+                    rozsah.text = rozsah_text
+                    rozsah.zakazka = zakazka
+                    rozsah.vytvoril = form.instance.vytvoril or request.user
+                    rozsah.save()
+
+            return redirect(f'{reverse("homepage")}?detail_zakazka={zakazka.id}')
     else:
-        formset = RozsahPraceFormSet(queryset=queryset)
+        formset = RozsahPraceFormSet(queryset=RozsahPrace.objects.filter(zakazka=zakazka))
 
     return render(request, 'zakazka_rozsahy.html', {
-        'zakazka': zakazka,
         'formset': formset,
+        'zakazka': zakazka
     })

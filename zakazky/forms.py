@@ -294,6 +294,21 @@ class RozsahPraceForm(forms.ModelForm):
             'text': forms.Select(attrs={'class': 'form-select'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['text'].required = False  # <=== DŮLEŽITÉ
+        self.fields['text'].empty_label = "—"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        text = cleaned_data.get("text")
+        novy_text = cleaned_data.get("novy_text")
+
+        if not text and not novy_text:
+            raise forms.ValidationError("Vyplňte buď stávající rozsah nebo nový text.")
+
+        return cleaned_data
+
 class ZamestnanecZakazkaForm(forms.ModelForm):
     premie_predpoklad = forms.DecimalField(required=False, localize=True, label='Předpokládaná prémie')
     premie_skutecnost = forms.DecimalField(required=False, localize=True, label='Skutečná prémie')

@@ -14,20 +14,20 @@
         {{ formset.management_form }}
         <table class="table">
             <thead>
-                <tr>
-                    <th>Stávající text</th>
-                    <th>Nový text (pokud není v seznamu)</th>
-                    <th>Smazat</th>
-                </tr>
+            <tr>
+                <th>Stávající text</th>
+                <th>Nový text (pokud není v seznamu)</th>
+                <th>Smazat</th>
+            </tr>
             </thead>
             <tbody>
-                {% for form in formset %}
-                    <tr>
-                        <td>{{ form.rozsah_text }}</td>
-                        <td>{{ form.novy_text }}</td>
-                        <td>{{ form.DELETE }}</td>
-                    </tr>
-                {% endfor %}
+            {% for form in formset %}
+                <tr>
+                    <td>{{ form.text }}</td>  <!-- místo form.rozsah_text -->
+                    <td>{{ form.novy_text }}</td>
+                    <td>{{ form.DELETE }}</td>
+                </tr>
+            {% endfor %}
             </tbody>
         </table>
         <button type="submit" class="btn btn-primary">Uložit změny</button>

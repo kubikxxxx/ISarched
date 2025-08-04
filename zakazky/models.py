@@ -246,7 +246,7 @@ class RozsahText(models.Model):
 
 class RozsahPrace(models.Model):
     zakazka = models.ForeignKey(Zakazka, on_delete=models.CASCADE)
-    text = models.ForeignKey(RozsahText, on_delete=models.CASCADE)
+    text = models.ForeignKey(RozsahText, on_delete=models.CASCADE, null=True, blank=True)
     vytvoril = models.ForeignKey(Zamestnanec, on_delete=models.SET_NULL, null=True)
     datum_vytvoreni = models.DateTimeField(default=now)
     splneno = models.BooleanField(default=False)
