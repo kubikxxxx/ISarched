@@ -337,3 +337,56 @@ RozsahPraceFormSet = modelformset_factory(
     extra=1,
     can_delete=True
 )
+
+
+class RozsahPraceInlineForm(forms.ModelForm):
+    text_value = forms.CharField(
+        label='Text rozsahu práce',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Zadejte text rozsahu'}),
+        required=True,
+    )
+
+    class Meta:
+        model = RozsahPrace
+        # PK přidáme a rovnou ho schováme, ať se POSTne
+        fields = ('id',)                               # ← důležité
+        widgets = {'id': forms.HiddenInput()}          # ← důležité
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # chraň se proti KeyError, kdyby 'id' někdy nebylo
+        if 'id' in self.fields:
+            self.fields['id'].required = False
+
+        if self.instance and getattr(self.instance, 'text_id', None) and self.instance.text:
+            self.initial['text_value'] = self.instance.text.text
+
+    def clean_text_value(self):
+        val = (self.cleaned_data.get('text_value') or '').strip()
+        if not val:
+            raise forms.ValidationError("Text nesmí být prázdný.")
+        return val
+
+class RozsahPraceEditForm(forms.ModelForm):
+    text_value = forms.CharField(
+        label="Text rozsahu práce",
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+
+    class Meta:
+        model = RozsahPrace
+        fields = []  # nepoužíváme přímo žádná modelová pole
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.text:
+            self.fields['text_value'].initial = self.instance.text.text
+
+
+RozsahPraceEditFormSet = modelformset_factory(
+    RozsahPrace,
+    form=RozsahPraceEditForm,
+    can_delete=True,        # ⬅️ umožní mazání
+    extra=0                 # ⬅️ vždy jeden prázdný pro přidání
+)
