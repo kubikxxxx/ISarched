@@ -390,3 +390,37 @@ RozsahPraceEditFormSet = modelformset_factory(
     can_delete=True,        # ⬅️ umožní mazání
     extra=0                 # ⬅️ vždy jeden prázdný pro přidání
 )
+
+
+class EmployeeWeeklyPlanForm(forms.ModelForm):
+    class Meta:
+        model = Zamestnanec
+        fields = ["plan_po", "plan_ut", "plan_st", "plan_ct", "plan_pa", "plan_so", "plan_ne"]
+        labels = {
+            "plan_po": "Pondělí (h)",
+            "plan_ut": "Úterý (h)",
+            "plan_st": "Středa (h)",
+            "plan_ct": "Čtvrtek (h)",
+            "plan_pa": "Pátek (h)",
+            "plan_so": "Sobota (h)",
+            "plan_ne": "Neděle (h)",
+        }
+        widgets = {
+            "plan_po": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_ut": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_st": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_ct": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_pa": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_so": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+            "plan_ne": forms.NumberInput(attrs={"step": "0.5", "min": "0", "max": "24", "class": "form-control"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        for f in ["plan_po","plan_ut","plan_st","plan_ct","plan_pa","plan_so","plan_ne"]:
+            val = cleaned.get(f)
+            if val is None:
+                continue
+            if val < 0 or val > 24:
+                self.add_error(f, "Hodnota musí být mezi 0 a 24 hodinami.")
+        return cleaned

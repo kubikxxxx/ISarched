@@ -6,7 +6,7 @@ from .views import login_view, logout_view, homepage_view, create_zakazka_view, 
     ukoncit_zakazku_view, toggle_rozsah_splneno, change_password_view, nacti_ares, \
     over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view, toggle_viditelnost_view, historie_zapisu_view, \
     vykaz_edit_view, vykaz_history_view, zakazka_rozsahy_view, zamestnanec_timesheet_view, uzavrit_mesic_view, \
-    otevrit_mesic_view
+    otevrit_mesic_view, ulozit_plan_mesice_view, employee_weekly_plan_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -42,11 +42,12 @@ urlpatterns = [
     path('vykaz/<int:vykaz_id>/edit/', vykaz_edit_view, name='vykaz_edit'),
     path('vykaz/<int:vykaz_id>/historie/', vykaz_history_view, name='vykaz_historie'),
     path('zakazka/<int:zakazka_id>/rozsahy/', zakazka_rozsahy_view, name='zakazka_rozsahy'),
-    path("zamestnanec/<int:zamestnanec_id>/timesheet/", zamestnanec_timesheet_view,
-         name="zamestnanec_timesheet"),
-    path("zamestnanec/<int:zamestnanec_id>/timesheet/uzavrit/<int:rok>/<int:mesic>/",
-         uzavrit_mesic_view, name="uzavrit_mesic"),
-    path("zamestnanec/<int:zamestnanec_id>/timesheet/otevrit/<int:rok>/<int:mesic>/",
-         otevrit_mesic_view, name="otevrit_mesic"),
+    path("zamestnanec/<int:zamestnanec_id>/timesheet/", zamestnanec_timesheet_view, name="zamestnanec_timesheet"),
+    path("zamestnanec/<int:zamestnanec_id>/timesheet/uzavrit/<int:rok>/<int:mesic>/", uzavrit_mesic_view, name="uzavrit_mesic"),
+    path("zamestnanec/<int:zamestnanec_id>/timesheet/otevrit/<int:rok>/<int:mesic>/", otevrit_mesic_view, name="otevrit_mesic"),
+    path("zamestnanec/<int:zamestnanec_id>/timesheet/plan/ulozit/", ulozit_plan_mesice_view, name="ulozit_plan_mesice"),
+    path('zamestnanec/<int:zamestnanec_id>/plan/', employee_weekly_plan_view, name='employee_weekly_plan'),
 
 ]
+
+

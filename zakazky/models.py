@@ -38,6 +38,13 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
         max_digits=6, decimal_places=2, default=0,
         help_text="+ znamená nadpracováno, − znamená dluh hodin"
     )
+    plan_po = models.DecimalField(max_digits=4, decimal_places=2, default=8)
+    plan_ut = models.DecimalField(max_digits=4, decimal_places=2, default=8)
+    plan_st = models.DecimalField(max_digits=4, decimal_places=2, default=8)
+    plan_ct = models.DecimalField(max_digits=4, decimal_places=2, default=8)
+    plan_pa = models.DecimalField(max_digits=4, decimal_places=2, default=8)
+    plan_so = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    plan_ne = models.DecimalField(max_digits=4, decimal_places=2, default=0)
 
     objects = ZamestnanecManager()
 
@@ -271,3 +278,15 @@ class UzaverkaMesice(models.Model):
 
     class Meta:
         unique_together = ("zamestnanec", "rok", "mesic")
+
+class PlanDen(models.Model):
+    zamestnanec = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    datum = models.DateField()
+    plan_hodin = models.DecimalField(max_digits=4, decimal_places=2)
+
+    class Meta:
+        unique_together = ("zamestnanec", "datum")
+        indexes = [models.Index(fields=["zamestnanec", "datum"])]
+
+    def __str__(self):
+        return f"{self.zamestnanec} – {self.datum}: {self.plan_hodin} h"

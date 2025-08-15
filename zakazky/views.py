@@ -23,7 +23,8 @@ from django.db.models import Sum
 from django.shortcuts import get_object_or_404, render
 from django.utils.timezone import now
 import holidays
-
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_protect
 from simple_history.utils import update_change_reason
 from simple_history.models import HistoricalRecords
 from simple_history.utils import get_history_model_for_model
@@ -34,10 +35,10 @@ from django.views.decorators.http import require_POST
 import calendar
 import datetime as dt
 from decimal import Decimal
-from .models import UredniZapis, RozsahText, UzaverkaMesice
+from .models import UredniZapis, RozsahText, UzaverkaMesice, PlanDen
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
-    EmployeeEditForm, RozsahPraceForm, RozsahPraceInlineForm, RozsahPraceEditFormSet
+    EmployeeEditForm, RozsahPraceForm, RozsahPraceInlineForm, RozsahPraceEditFormSet, EmployeeWeeklyPlanForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -937,20 +938,10 @@ def _plan_for_day(d: dt.date, holidays: set[dt.date]) -> int:
 
 @login_required
 def zamestnanec_timesheet_view(request, zamestnanec_id):
-    """
-    Timesheet zaměstnance (měsíc × zakázky) + navigace šipkami:
-      - sloupce: dny v měsíci
-      - řádky: zakázky, na kterých v měsíci pracoval
-      - buňky: hodiny z výkazů pro daný den/zakázku
-      - spodní část: denní součty, plán (8h mimo víkend/svátek), denní rozdíl
-      - dole: měsíční součty a rozdíl, banka hodin
-      - přidáno: prev_ym / next_ym pro šipky
-    """
     from decimal import Decimal
 
     zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
 
-    # vybraný měsíc (ym=YYYY-MM) nebo aktuální
     ym = request.GET.get("ym")
     if ym:
         year, month = map(int, ym.split("-"))
@@ -958,7 +949,6 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         today = now().date()
         year, month = today.year, today.month
 
-    # šipky: předchozí / další měsíc
     (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
     prev_ym = f"{prev_y:04d}-{prev_m:02d}"
     next_ym = f"{next_y:04d}-{next_m:02d}"
@@ -966,10 +956,8 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
     ndays = calendar.monthrange(year, month)[1]
     first_day = dt.date(year, month, 1)
     last_day = dt.date(year, month, ndays)
-
     holidays = _cz_holidays(year)
 
-    # výkazy v měsíci
     qs = (
         ZakazkaZamestnanec.objects
         .filter(zamestnanec=zam, den_prace__gte=first_day, den_prace__lte=last_day)
@@ -977,7 +965,6 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         .order_by("zakazka__zakazka_cislo", "den_prace")
     )
 
-    # stabilní pořadí zakázek
     zakazky_order = []
     seen = set()
     for v in qs:
@@ -985,7 +972,6 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
             zakazky_order.append(v.zakazka)
             seen.add(v.zakazka_id)
 
-    # mřížka hodin
     grid = {z.id: [Decimal("0.0")] * ndays for z in zakazky_order}
     for v in qs:
         idx = (v.den_prace - first_day).days
@@ -993,7 +979,6 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         grid.setdefault(v.zakazka_id, [Decimal("0.0")] * ndays)
         grid[v.zakazka_id][idx] += hrs
 
-    # denní příznaky, plán a součty
     sum_by_day = [Decimal("0.0")] * ndays
     days_meta = []
     plan_by_day = []
@@ -1001,7 +986,8 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         dte = first_day + dt.timedelta(days=i)
         weekend = dte.weekday() >= 5
         holiday = dte in holidays
-        plan_i = 0 if (weekend or holiday) else 8
+
+        plan_i = _plan_for_day_custom(zam, dte, holidays)
         plan_by_day.append(plan_i)
 
         total_d = Decimal("0.0")
@@ -1009,20 +995,18 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
             total_d += zvals[i]
         sum_by_day[i] = total_d
 
-        # denní rozdíl
-        diff_i = total_d - Decimal(str(plan_i))
+        diff_i = total_d - plan_i
 
         days_meta.append({
             "date": dte,
             "num": i + 1,
             "weekend": weekend,
             "holiday": holiday,
-            "plan": plan_i,
+            "plan": plan_i.quantize(Decimal("0.01")),
             "sum": total_d.quantize(Decimal("0.01")),
             "diff": diff_i.quantize(Decimal("0.01")),
         })
 
-    # řádky tabulky
     rows = []
     month_total = Decimal("0.0")
     for z in zakazky_order:
@@ -1041,10 +1025,9 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         month_total += row_total
     month_total = month_total.quantize(Decimal("0.01"))
 
-    plan_total = sum((Decimal(str(p)) for p in plan_by_day), Decimal("0.0")).quantize(Decimal("0.01"))
+    plan_total = sum(plan_by_day, Decimal("0.0")).quantize(Decimal("0.01"))
     diff_total = (month_total - plan_total).quantize(Decimal("0.01"))
 
-    # banka hodin (aktuální + projekce)
     bank_now = getattr(zam, "banka_hodin", None)
     if bank_now is None:
         bank_now = UzaverkaMesice.objects.filter(zamestnanec=zam).aggregate(s=Sum("delta_hodin"))["s"] or Decimal("0.0")
@@ -1062,16 +1045,13 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         "ym": f"{year:04d}-{month:02d}",
         "first_day": first_day,
         "last_day": last_day,
-
         "prev_ym": prev_ym,
         "next_ym": next_ym,
-
-        "days": days_meta,   # obsahuje sum, plan, diff + příznaky dne
+        "days": days_meta,
         "rows": rows,
         "plan_total": plan_total,
         "month_total": month_total,
         "diff_total": diff_total,
-
         "bank_now": bank_now.quantize(Decimal("0.01")),
         "projected_bank": projected_bank.quantize(Decimal("0.01")),
         "month_closed": month_closed,
@@ -1103,7 +1083,8 @@ def uzavrit_mesic_view(request, zamestnanec_id: int, rok: int, mesic: int):
         Decimal("0.0")
     )
     plan_total = sum(
-        (Decimal(str(_plan_for_day(first_day + dt.timedelta(days=i), holidays))) for i in range(ndays)),
+        (Decimal(str(_plan_for_day_custom(zam, first_day + dt.timedelta(days=i), holidays)))
+         for i in range(ndays)),
         Decimal("0.0")
     )
     delta = actual_total - plan_total
@@ -1152,3 +1133,87 @@ def otevrit_mesic_view(request, zamestnanec_id: int, rok: int, mesic: int):
 
     messages.success(request, f"Uzavření zrušeno. Úprava banky hodin: {delta:+.2f} h byla vrácena.")
     return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={_month_label(rok, mesic)}")
+
+
+_WD_MAP = ["po", "ut", "st", "ct", "pa", "so", "ne"]
+
+def _weekly_plan_hours(zam: Zamestnanec, d: dt.date) -> Decimal:
+    fld = f"plan_{_WD_MAP[d.weekday()]}"
+    val = getattr(zam, fld, 8 if d.weekday() < 5 else 0)
+    return Decimal(str(val))
+
+def _plan_for_day_custom(zam: Zamestnanec, d: dt.date, holidays: set[dt.date]) -> Decimal:
+    """
+    Výchozí: týdenní šablona; státní svátky = 0 h.
+    Když existuje PlanDen override, ten má přednost (může být i 0).
+    """
+    base = Decimal("0.0") if d in holidays else _weekly_plan_hours(zam, d)
+    ov = PlanDen.objects.filter(zamestnanec=zam, datum=d).values_list("plan_hodin", flat=True).first()
+    return Decimal(str(ov)) if ov is not None else base
+
+@require_POST
+@login_required
+@csrf_protect
+def ulozit_plan_mesice_view(request, zamestnanec_id: int):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může upravit plán hodin.")
+
+    zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
+    ym = request.GET.get("ym")
+    if not ym:
+        return redirect(reverse("zamestnanec_timesheet", args=[zam.id]))
+
+    year, month = map(int, ym.split("-"))
+    first_day, last_day, ndays = _month_bounds(year, month)
+    holidays = _cz_holidays(year)
+
+    # uložit každé pole plan_1..plan_ndays
+    for i in range(1, ndays + 1):
+        key = f"plan_{i}"
+        if key not in request.POST:
+            continue
+        raw = request.POST.get(key, "").strip()
+        if raw == "":
+            continue
+        try:
+            val = Decimal(raw)
+            if val < 0 or val > 24:
+                continue
+        except Exception:
+            continue
+
+        d = first_day + dt.timedelta(days=i - 1)
+
+        # pokud hodnota odpovídá výchozímu plánu, override smažeme
+        base = _plan_for_day_custom(zam, d, holidays)
+        if val == base:
+            PlanDen.objects.filter(zamestnanec=zam, datum=d).delete()
+        else:
+            PlanDen.objects.update_or_create(
+                zamestnanec=zam, datum=d, defaults={"plan_hodin": val}
+            )
+
+    return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={ym}")
+
+@login_required
+@csrf_protect
+def employee_weekly_plan_view(request, zamestnanec_id):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může upravit týdenní plán.")
+
+    zam = get_object_or_404(Zamestnanec, id=zamestnanec_id)
+
+    if request.method == "POST":
+        form = EmployeeWeeklyPlanForm(request.POST, instance=zam)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Týdenní plán byl uložen.")
+            # po uložení zpět na detail zaměstnance v homepage s otevřeným panelem
+            return redirect(f'/homepage/?detail_zamestnanec={zam.id}')
+    else:
+        form = EmployeeWeeklyPlanForm(instance=zam)
+
+    return render(request, "employee_weekly_plan_form.html", {
+        "form": form,
+        "zamestnanec": zam,
+    })

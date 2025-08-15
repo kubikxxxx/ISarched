@@ -1,0 +1,71 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <title>Týdenní plán – {{ zamestnanec.jmeno }} {{ zamestnanec.prijmeni }}</title>
+  <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+</head>
+<body class="p-3">
+  <div class="container" style="max-width: 720px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0">Týdenní plán – {{ zamestnanec.jmeno }} {{ zamestnanec.prijmeni }}</h4>
+      <a href="/homepage/?detail_zamestnanec={{ zamestnanec.id }}" class="btn btn-outline-secondary btn-sm">← Zpět na detail</a>
+    </div>
+
+    <div class="alert alert-info">
+      Tento formulář nastaví <strong>výchozí týdenní plán hodin</strong> (Po–Ne), který se použije při výpočtech plánu v timesheetu.
+      <br>Jednorázové změny konkrétních dnů dělej přes <em>„Upravit plán“</em> přímo v timesheetu (denní přepis má přednost).
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_po.id_for_label }}">Pondělí (h)</label>
+          {{ form.plan_po }}
+          {% if form.plan_po.errors %}<div class="text-danger small">{{ form.plan_po.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_ut.id_for_label }}">Úterý (h)</label>
+          {{ form.plan_ut }}
+          {% if form.plan_ut.errors %}<div class="text-danger small">{{ form.plan_ut.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_st.id_for_label }}">Středa (h)</label>
+          {{ form.plan_st }}
+          {% if form.plan_st.errors %}<div class="text-danger small">{{ form.plan_st.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_ct.id_for_label }}">Čtvrtek (h)</label>
+          {{ form.plan_ct }}
+          {% if form.plan_ct.errors %}<div class="text-danger small">{{ form.plan_ct.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_pa.id_for_label }}">Pátek (h)</label>
+          {{ form.plan_pa }}
+          {% if form.plan_pa.errors %}<div class="text-danger small">{{ form.plan_pa.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_so.id_for_label }}">Sobota (h)</label>
+          {{ form.plan_so }}
+          {% if form.plan_so.errors %}<div class="text-danger small">{{ form.plan_so.errors }}</div>{% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="{{ form.plan_ne.id_for_label }}">Neděle (h)</label>
+          {{ form.plan_ne }}
+          {% if form.plan_ne.errors %}<div class="text-danger small">{{ form.plan_ne.errors }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mt-4">
+        <button class="btn btn-primary">Uložit</button>
+        <a href="/homepage/?detail_zamestnanec={{ zamestnanec.id }}" class="btn btn-outline-secondary">Zrušit</a>
+      </div>
+    </form>
+  </div>
+
+  <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>
