@@ -63,6 +63,8 @@
         <div class="col-md-2 bg-light sidebar p-3">
             <h5 class="fw-bold">Zakázky</h5>
             {% if is_admin %}
+                <a href="{% url 'statistiky' %}" class="btn btn-primary w-100 mb-2">📊 Statistiky</a>
+                <a href="{% url 'overhead_list' %}" class="btn btn-outline-dark w-100 mb-2">⚙️ Režijní náklady</a>
                 <a href="{% url 'create_zakazka' %}" class="btn btn-outline-success w-100 mb-3">+ Nová zakázka</a>
             {% endif %}
             {% if is_admin %}
@@ -92,8 +94,7 @@
                                 ???
                             {% endif %}
                         </div>
-                        <a href="?detail_zakazka=
-                                {{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
+                        <a href="?detail_zakazka={{ zakazka.id }}{% if request.GET.aktivni != '0' %}&aktivni=1{% endif %}"
                            class="btn btn-sm btn-primary">Detail</a>
                         {% if is_admin %}
                             <a href="?detail_zamestnanci={{ zakazka.id }}"

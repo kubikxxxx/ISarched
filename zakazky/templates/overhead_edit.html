@@ -1,0 +1,27 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <title>Upravit režijní sazbu</title>
+  <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+</head>
+<body class="p-3">
+  <div class="container" style="max-width: 720px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0">Upravit režijní sazbu</h4>
+      <a href="{% url 'overhead_list' %}" class="btn btn-outline-secondary btn-sm">← Zpět</a>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-2">{{ form.valid_from.label_tag }}{{ form.valid_from }}</div>
+      <div class="mb-2">{{ form.rate_per_hour.label_tag }}{{ form.rate_per_hour }}</div>
+      <div class="mb-2">{{ form.note.label_tag }}{{ form.note }}</div>
+      <button class="btn btn-primary">Uložit</button>
+      <a href="{% url 'overhead_list' %}" class="btn btn-outline-secondary">Zrušit</a>
+    </form>
+  </div>
+  <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

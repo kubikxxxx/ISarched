@@ -10,7 +10,7 @@ from django.utils.timezone import localtime
 from .models import (
     Zakazka, Zamestnanec, Klient, Sazba, KlientPoznamka,
     Subdodavka, Subdodavatel, UredniZapis, ZakazkaZamestnanec,
-    RozsahPrace, RozsahText, ZamestnanecZakazka
+    RozsahPrace, RozsahText, ZamestnanecZakazka, OverheadRate
 )
 
 
@@ -137,7 +137,10 @@ class EmployeeForm(UserCreationForm):
 class EmployeeEditForm(forms.ModelForm):
     class Meta:
         model = Zamestnanec
-        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod')
+        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod',
+            "typ_osoby",
+            "mzda_mesic",
+            "sazba_km",)
         labels = {
             'username': 'Uživatelské jméno (přihlašovací)',
             'jmeno': 'Jméno',
@@ -145,6 +148,9 @@ class EmployeeEditForm(forms.ModelForm):
             'titul': 'Titul',
             'is_admin': 'Administrátor',
             'sazba_hod': 'Hodinová sazba',
+            "typ_osoby": 'externista/zaměstnanec',
+            "mzda_mesic": 'mzda/měsíc (vyplnit jen u zaměstnanců)',
+            "sazba_km": 'sazba na kilometr',
         }
         widgets = {
             'username': forms.TextInput(attrs={'class': 'form-control'}),
@@ -153,6 +159,10 @@ class EmployeeEditForm(forms.ModelForm):
             'titul': forms.TextInput(attrs={'class': 'form-control'}),
             'sazba_hod': forms.NumberInput(attrs={'class': 'form-control'}),
             'is_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            "typ_osoby": forms.Select(attrs={"class": "form-select"}),
+            "mzda_mesic": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
+            "sazba_hod": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
+            "sazba_km": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
         }
 
 
@@ -424,3 +434,25 @@ class EmployeeWeeklyPlanForm(forms.ModelForm):
             if val < 0 or val > 24:
                 self.add_error(f, "Hodnota musí být mezi 0 a 24 hodinami.")
         return cleaned
+
+
+class OverheadRateForm(forms.ModelForm):
+    class Meta:
+        model = OverheadRate
+        fields = ["valid_from", "rate_per_hour", "note"]
+        labels = {
+            "valid_from": "Platí od",
+            "rate_per_hour": "Sazba (Kč / hod)",
+            "note": "Poznámka",
+        }
+        widgets = {
+            "valid_from": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "rate_per_hour": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
+            "note": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+    def clean_rate_per_hour(self):
+        v = self.cleaned_data["rate_per_hour"]
+        if v is None or v < 0:
+            raise forms.ValidationError("Sazba musí být nezáporná.")
+        return v

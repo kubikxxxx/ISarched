@@ -46,6 +46,26 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     plan_so = models.DecimalField(max_digits=4, decimal_places=2, default=0)
     plan_ne = models.DecimalField(max_digits=4, decimal_places=2, default=0)
 
+    TYP_EMPLOYEE = "EMP"
+    TYP_EXTERNAL = "EXT"
+    TYP_CHOICES = (
+        (TYP_EMPLOYEE, "Zaměstnanec"),
+        (TYP_EXTERNAL, "Externista"),
+    )
+
+    typ_osoby = models.CharField(
+        max_length=3,
+        choices=TYP_CHOICES,
+        default=TYP_EMPLOYEE,
+        help_text="Rozlišení pro kalkulaci nákladů."
+    )
+
+    mzda_mesic = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text="Měsíční mzda (Kč). Použije se pro zaměstnance."
+    )
+
     objects = ZamestnanecManager()
 
     USERNAME_FIELD = 'username'
@@ -290,3 +310,20 @@ class PlanDen(models.Model):
 
     def __str__(self):
         return f"{self.zamestnanec} – {self.datum}: {self.plan_hodin} h"
+
+
+class OverheadRate(models.Model):
+    """
+    Režijní náklad firmy v Kč / 1 hodinu, s datem účinnosti.
+    Pro výpočet měsíce se pro každý den vezme sazba platná v ten den.
+    """
+    valid_from = models.DateField(help_text="Platí od tohoto data (včetně).")
+    rate_per_hour = models.DecimalField(max_digits=10, decimal_places=2, help_text="Kč za hodinu.")
+    note = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        ordering = ["-valid_from"]
+        indexes = [models.Index(fields=["valid_from"])]
+
+    def __str__(self):
+        return f"{self.valid_from}: {self.rate_per_hour} Kč/h"

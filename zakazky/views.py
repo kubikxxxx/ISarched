@@ -35,10 +35,11 @@ from django.views.decorators.http import require_POST
 import calendar
 import datetime as dt
 from decimal import Decimal
-from .models import UredniZapis, RozsahText, UzaverkaMesice, PlanDen
+from .models import UredniZapis, RozsahText, UzaverkaMesice, PlanDen, OverheadRate
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
-    EmployeeEditForm, RozsahPraceForm, RozsahPraceInlineForm, RozsahPraceEditFormSet, EmployeeWeeklyPlanForm
+    EmployeeEditForm, RozsahPraceForm, RozsahPraceInlineForm, RozsahPraceEditFormSet, EmployeeWeeklyPlanForm, \
+    OverheadRateForm
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
@@ -1217,3 +1218,305 @@ def employee_weekly_plan_view(request, zamestnanec_id):
         "form": form,
         "zamestnanec": zam,
     })
+
+@login_required
+def statistiky_view(request):
+    """
+    Měsíční dashboard statistik (jen pro admina):
+      - Hodiny, plán, rozdíl, km
+      - Finance: mzdy zaměstnanců (měsíční), mzdové externistů (hodinovky),
+                 cestovní náklady, režie (8h/den × sazba v daný den),
+                 interní náklady celkem
+      - Výnosy = sazba na zakázce × odpracované hodiny
+      - Marže = Výnosy − Interní náklady
+      - Rozpady: zaměstnanci / zakázky / klienti (bez režie)
+      - Nové a ukončené zakázky v daném měsíci
+    """
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může zobrazit statistiky.")
+
+    # --- vstupní měsíc ---
+    ym = request.GET.get("ym")
+    if ym:
+        year, month = map(int, ym.split("-"))
+    else:
+        today = now().date()
+        year, month = today.year, today.month
+
+    # navigace měsíců
+    (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
+    prev_ym = f"{prev_y:04d}-{prev_m:02d}"
+    next_ym = f"{next_y:04d}-{next_m:02d}"
+
+    # hranice měsíce + svátky
+    ndays = calendar.monthrange(year, month)[1]
+    first_day = dt.date(year, month, 1)
+    last_day = dt.date(year, month, ndays)
+    holidays = _cz_holidays(year)
+
+    # přehled nových/ukončených zakázek v období
+    new_projects = (
+        Zakazka.objects
+        .filter(zakazka_start__date__gte=first_day, zakazka_start__date__lte=last_day)
+        .order_by("zakazka_start")
+    )
+    closed_projects = (
+        Zakazka.objects
+        .filter(zakazka_konec_skut__date__gte=first_day, zakazka_konec_skut__date__lte=last_day)
+        .order_by("zakazka_konec_skut")
+    )
+
+    # helper: režijní sazba v den (fallback 0, pokud helper nemáš)
+    def _over_on(day: dt.date) -> Decimal:
+        try:
+            return Decimal(str(_overhead_rate_on(day)))
+        except NameError:
+            return Decimal("0.0")
+
+    # --- výkazy v měsíci ---
+    qs = (
+        ZakazkaZamestnanec.objects
+        .filter(den_prace__gte=first_day, den_prace__lte=last_day)
+        .select_related("zakazka", "zamestnanec", "zakazka__klient", "zakazka__sazba")
+        .order_by("den_prace")
+    )
+
+    # kumulátory
+    total_hours = Decimal("0.0")
+    total_km = Decimal("0.0")
+    labor_cost_external_total = Decimal("0.0")  # externisté: hodiny × sazba_hod
+    salary_total = Decimal("0.0")               # zaměstnanci: měsíční mzdy (alokují se níže)
+    travel_cost_total = Decimal("0.0")
+    revenue_total = Decimal("0.0")
+
+    # rozpady (zatím bez mezd zaměstnanců – přičtou se po alokaci)
+    by_employee, by_project, by_client = {}, {}, {}
+
+    # podklady pro alokaci mezd zaměstnanců
+    emp_total_hours: dict[int, Decimal] = {}
+    emp_proj_hours: dict[tuple[int, int], Decimal] = {}
+    emp_client_hours: dict[tuple[int, int], Decimal] = {}
+
+    for v in qs:
+        hrs = Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do)))
+        if hrs <= 0:
+            continue
+        km = Decimal(str(v.najete_km or 0))
+
+        emp = v.zamestnanec
+        proj = v.zakazka
+        cli = getattr(proj, "klient", None)
+
+        # cestovní náklady
+        rate_km = Decimal(str(emp.sazba_km or 0))
+        travel_cost = km * rate_km
+
+        # výnos: sazba na zakázce × hodiny
+        proj_rate = Decimal(str(proj.sazba.hodnota)) if getattr(proj, "sazba", None) and proj.sazba.hodnota is not None else Decimal("0.0")
+        revenue = hrs * proj_rate
+
+        total_hours += hrs
+        total_km += km
+        travel_cost_total += travel_cost
+        revenue_total += revenue
+
+        # mzdové náklady: externista = hodiny × jeho hodinovka; zaměstnanec = až po alokaci mzdy
+        if getattr(emp, "typ_osoby", None) == Zamestnanec.TYP_EXTERNAL:
+            rate_h = Decimal(str(emp.sazba_hod or 0))
+            labor_cost = hrs * rate_h
+            labor_cost_external_total += labor_cost
+        else:
+            labor_cost = Decimal("0.0")
+
+        # podklady pro alokaci mzdy
+        emp_total_hours[emp.id] = emp_total_hours.get(emp.id, Decimal("0.0")) + hrs
+        emp_proj_hours[(emp.id, proj.id)] = emp_proj_hours.get((emp.id, proj.id), Decimal("0.0")) + hrs
+        if cli:
+            emp_client_hours[(emp.id, cli.id)] = emp_client_hours.get((emp.id, cli.id), Decimal("0.0")) + hrs
+
+        # --- by employee ---
+        be = by_employee.setdefault(emp.id, {
+            "emp": emp,
+            "hours": Decimal("0.0"), "km": Decimal("0.0"),
+            "labor_cost": Decimal("0.0"), "travel_cost": Decimal("0.0"),
+            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
+            "margin": Decimal("0.0"),
+        })
+        be["hours"] += hrs
+        be["km"] += km
+        be["travel_cost"] += travel_cost
+        be["labor_cost"] += labor_cost
+        be["total_cost"] += (labor_cost + travel_cost)
+        be["revenue"] += revenue
+        be["margin"] += (revenue - (labor_cost + travel_cost))
+
+        # --- by project ---
+        bp = by_project.setdefault(proj.id, {
+            "zakazka": proj,
+            "hours": Decimal("0.0"), "km": Decimal("0.0"),
+            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
+            "margin": Decimal("0.0"),
+        })
+        bp["hours"] += hrs
+        bp["km"] += km
+        bp["total_cost"] += (labor_cost + travel_cost)
+        bp["revenue"] += revenue
+        bp["margin"] += (revenue - (labor_cost + travel_cost))
+
+        # --- by client ---
+        if cli:
+            bc = by_client.setdefault(cli.id, {
+                "klient": cli,
+                "hours": Decimal("0.0"),
+                "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
+                "margin": Decimal("0.0"),
+            })
+            bc["hours"] += hrs
+            bc["total_cost"] += (labor_cost + travel_cost)
+            bc["revenue"] += revenue
+            bc["margin"] += (revenue - (labor_cost + travel_cost))
+
+    # --- alokace měsíčních mezd zaměstnanců ---
+    allocated_salary_total = Decimal("0.0")
+    for emp in Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EMPLOYEE):
+        mzda = Decimal(str(emp.mzda_mesic or 0))
+        salary_total += mzda
+        if mzda <= 0:
+            continue
+
+        emp_hours = emp_total_hours.get(emp.id, Decimal("0.0"))
+
+        # Přičti mzdu na řádek zaměstnance (aby seděla jeho marže/total_cost)
+        be = by_employee.setdefault(emp.id, {
+            "emp": emp,
+            "hours": Decimal("0.0"), "km": Decimal("0.0"),
+            "labor_cost": Decimal("0.0"), "travel_cost": Decimal("0.0"),
+            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
+            "margin": Decimal("0.0"),
+        })
+        be["labor_cost"] += mzda
+        be["total_cost"] += mzda
+        be["margin"] -= mzda
+
+        # Rozdělení mzdy na projekty/klienty podle skutečných hodin
+        if emp_hours > 0:
+            for (e_id, proj_id), h in emp_proj_hours.items():
+                if e_id != emp.id or h <= 0:
+                    continue
+                share = (h / emp_hours) * mzda
+                bp = by_project.get(proj_id)
+                if bp:
+                    bp["total_cost"] += share
+                    bp["margin"] -= share
+                    # zároveň propadne i do klienta
+                    proj = bp["zakazka"]
+                    cli = getattr(proj, "klient", None)
+                    if cli:
+                        bc = by_client.get(cli.id)
+                        if bc:
+                            bc["total_cost"] += share
+                            bc["margin"] -= share
+                allocated_salary_total += share
+        # pokud nemá hodiny, mzda zůstane jen v by_employee a v celkových nákladech
+
+    # --- plán hodin (fallback na _plan_for_day, pokud nemáš custom) ---
+    plan_total = Decimal("0.0")
+    active_emps = Zamestnanec.objects.filter(is_active=True)
+    for emp in active_emps:
+        for i in range(ndays):
+            dte = first_day + dt.timedelta(days=i)
+            try:
+                plan_i = _plan_for_day_custom(emp, dte, holidays)
+            except NameError:
+                plan_i = _plan_for_day(dte, holidays)
+            plan_total += Decimal(str(plan_i))
+    diff_total = (total_hours - plan_total)
+
+    # --- režie: pracovní dny (Po–Pá) mimo svátek, fixně 8 h/den ---
+    overhead_total = Decimal("0.0")
+    for i in range(ndays):
+        d = first_day + dt.timedelta(days=i)
+        if d.weekday() < 5 and d not in holidays:
+            overhead_total += Decimal("8.0") * _over_on(d)
+
+    # interní náklady a marže
+    labor_cost_total = (labor_cost_external_total + salary_total)
+    internal_cost_total = (labor_cost_external_total + salary_total + travel_cost_total + overhead_total)
+    margin_total = (revenue_total - internal_cost_total)
+
+    # KPI počty
+    kpi = {
+        "projects_active": Zakazka.objects.filter(zakazka_konec_skut__isnull=True).count(),
+        "employees_active": active_emps.count(),
+        "clients": Klient.objects.count(),
+        "subdodavatels": Subdodavatel.objects.count(),
+    }
+
+    # seřazené listy pro tabulky
+    by_emp = sorted(by_employee.values(), key=lambda x: (x["total_cost"], x["hours"]), reverse=True)
+    by_proj = sorted(by_project.values(),  key=lambda x: (x["total_cost"], x["hours"]), reverse=True)
+    by_cli  = sorted(by_client.values(),   key=lambda x: (x["revenue"], x["hours"]), reverse=True)
+
+    context = {
+        "ym": f"{year:04d}-{month:02d}",
+        "year": year, "month": month,
+        "prev_ym": prev_ym, "next_ym": next_ym,
+        "first_day": first_day, "last_day": last_day,
+
+        "kpi": kpi,
+        "total_hours": total_hours,
+        "total_km": total_km,
+        "plan_total": plan_total,
+        "diff_total": diff_total,
+
+        "salary_total": salary_total,
+        "labor_cost_external_total": labor_cost_external_total,
+        "travel_cost_total": travel_cost_total,
+        "overhead_total": overhead_total,
+        "labor_cost_total": labor_cost_total,
+        "internal_cost_total": internal_cost_total,
+        "revenue_total": revenue_total,
+        "margin_total": margin_total,
+
+        "new_projects": new_projects,
+        "closed_projects": closed_projects,
+
+        "by_emp": by_emp,
+        "by_proj": by_proj,
+        "by_client": by_cli,
+    }
+    return render(request, "statistiky.html", context)
+
+
+@login_required
+@csrf_protect
+def overhead_list_create_view(request):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může spravovat režijní náklady.")
+    form = OverheadRateForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Režijní sazba byla uložena.")
+        return redirect("overhead_list")
+    rates = OverheadRate.objects.all()  # ordered by -valid_from
+    return render(request, "overhead_list.html", {"form": form, "rates": rates})
+
+@login_required
+@csrf_protect
+def overhead_edit_view(request, rate_id):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může spravovat režijní náklady.")
+    rate = get_object_or_404(OverheadRate, id=rate_id)
+    form = OverheadRateForm(request.POST or None, instance=rate)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Režijní sazba byla upravena.")
+        return redirect("overhead_list")
+    return render(request, "overhead_edit.html", {"form": form, "rate": rate})
+
+def _overhead_rate_on(day: dt.date) -> Decimal:
+    """
+    Vrátí režijní sazbu (Kč/h) platnou v daný den. Když není žádná, vrací 0.
+    """
+    rec = OverheadRate.objects.filter(valid_from__lte=day).order_by("-valid_from").first()
+    return Decimal(str(rec.rate_per_hour)) if rec else Decimal("0.00")
