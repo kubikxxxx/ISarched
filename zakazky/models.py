@@ -34,6 +34,10 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     sazba_km = models.DecimalField(max_digits=18, decimal_places=2, blank=True, null=True)
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    banka_hodin = models.DecimalField(
+        max_digits=6, decimal_places=2, default=0,
+        help_text="+ znamená nadpracováno, − znamená dluh hodin"
+    )
 
     objects = ZamestnanecManager()
 
@@ -257,3 +261,13 @@ class RozsahPrace(models.Model):
 
     def __str__(self):
         return f"{self.text} – {self.zakazka}"
+
+class UzaverkaMesice(models.Model):
+    zamestnanec = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    rok = models.IntegerField()
+    mesic = models.IntegerField()  # 1–12
+    delta_hodin = models.DecimalField(max_digits=6, decimal_places=2)
+    vytvoreno = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("zamestnanec", "rok", "mesic")

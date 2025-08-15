@@ -4,16 +4,26 @@ from django.forms import modelformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.template.defaultfilters import date
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.forms import PasswordChangeForm
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, HttpResponse
 from django.contrib.auth import update_session_auth_hash
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.contrib import messages
-from django.utils.timezone import now
+from django.utils.timezone import now, localdate
 from django.db.models import Sum
+import re
+from calendar import monthrange
+from datetime import date, timedelta
+from decimal import Decimal
+from django.db.models import Sum
+from django.shortcuts import get_object_or_404, render
+from django.utils.timezone import now
+import holidays
+
 from simple_history.utils import update_change_reason
 from simple_history.models import HistoricalRecords
 from simple_history.utils import get_history_model_for_model
@@ -21,7 +31,10 @@ import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import UredniZapis, RozsahText
+import calendar
+import datetime as dt
+from decimal import Decimal
+from .models import UredniZapis, RozsahText, UzaverkaMesice
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
     EmployeeEditForm, RozsahPraceForm, RozsahPraceInlineForm, RozsahPraceEditFormSet
@@ -567,8 +580,29 @@ def upravit_prirazeni_view(request, prirazeni_id):
 def vykaz_create_view(request, zakazka_id):
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
 
-    if not request.user.is_admin and not ZamestnanecZakazka.objects.filter(zakazka=zakazka,
-                                                                           zamestnanec=request.user).exists():
+    if request.method == "POST":
+        den_prace_str = request.POST.get("den_prace")
+        if den_prace_str:
+            den_prace = date.fromisoformat(den_prace_str)
+        else:
+            den_prace = date.today()
+
+        # kontrola uzavření měsíce
+        if UzaverkaMesice.objects.filter(
+            zamestnanec=request.user,
+            rok=den_prace.year,
+            mesic=den_prace.month
+        ).exists():
+            return render(request, 'alert_redirect.html', {
+                'alert_text': "Tento měsíc je již uzavřen – nový výkaz nelze vytvořit.",
+                'redirect_url': reverse("homepage")
+            })
+
+    # kontrola oprávnění
+    if not request.user.is_admin and not ZamestnanecZakazka.objects.filter(
+        zakazka=zakazka,
+        zamestnanec=request.user
+    ).exists():
         return HttpResponseForbidden("Nemáte oprávnění přidávat výkazy k této zakázce.")
 
     if request.method == 'POST':
@@ -580,7 +614,7 @@ def vykaz_create_view(request, zakazka_id):
             vykaz.save()
             return redirect(f'/homepage/?detail_zakazka={zakazka_id}')
     else:
-        form = VykazForm(initial={'den_prace': now().date()})  # ⬅️ zde se předvyplňuje dnešek
+        form = VykazForm(initial={'den_prace': now().date()})
 
     return render(request, 'vykaz_form.html', {
         'form': form,
@@ -729,9 +763,35 @@ def toggle_viditelnost_view(request, prirazeni_id):
 def vykaz_edit_view(request, vykaz_id):
     vykaz = get_object_or_404(ZakazkaZamestnanec, id=vykaz_id)
 
+    # oprávnění
+    if not request.user.is_admin and request.user != vykaz.zamestnanec:
+        return HttpResponseForbidden("Nemáte oprávnění upravovat tento výkaz.")
+
+    # zákaz editace uzavřeného původního měsíce
+    if UzaverkaMesice.objects.filter(
+        zamestnanec=vykaz.zamestnanec,
+        rok=vykaz.den_prace.year,
+        mesic=vykaz.den_prace.month
+    ).exists():
+        return render(request, 'alert_redirect.html', {
+            'alert_text': "Tento měsíc je již uzavřen – výkaz nelze upravit.",
+            'redirect_url': reverse("homepage") + f"?detail_zakazka={vykaz.zakazka.id}"
+        })
+
     if request.method == 'POST':
         form = VykazForm(request.POST, instance=vykaz)
         if form.is_valid():
+            new_den = form.cleaned_data.get('den_prace') or vykaz.den_prace
+            if UzaverkaMesice.objects.filter(
+                zamestnanec=vykaz.zamestnanec,
+                rok=new_den.year,
+                mesic=new_den.month
+            ).exists():
+                return render(request, 'alert_redirect.html', {
+                    'alert_text': "Cílový měsíc je uzavřen – změnu nelze uložit.",
+                    'redirect_url': reverse("homepage") + f"?detail_zakazka={vykaz.zakazka.id}"
+                })
+
             form.save()
             return redirect(f'/homepage/?detail_zakazka={vykaz.zakazka.id}')
     else:
@@ -820,3 +880,275 @@ def zakazka_rozsahy_view(request, zakazka_id):
         'zakazka': zakazka,
         'formset': formset
     })
+
+def _easter_sunday(year: int) -> dt.date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return dt.date(year, month, day)
+
+def _cz_holidays(year: int) -> set[dt.date]:
+    easter_mon = _easter_sunday(year) + dt.timedelta(days=1)
+    fixed = {
+        (1,1),(5,1),(5,8),(7,5),(7,6),(9,28),(10,28),(11,17),(12,24),(12,25),(12,26)
+    }
+    s = {dt.date(year, m, d) for (m, d) in fixed}
+    s.add(easter_mon)
+    return s
+
+def _month_bounds(year: int, month: int) -> tuple[dt.date, dt.date, int]:
+    first = dt.date(year, month, 1)
+    _, ndays = calendar.monthrange(year, month)
+    last = dt.date(year, month, ndays)
+    return first, last, ndays
+
+def _hours_between(date_: dt.date, t_from: dt.time | None, t_to: dt.time | None) -> float:
+    if not (t_from and t_to):
+        return 0.0
+    start = dt.datetime.combine(date_, t_from)
+    end = dt.datetime.combine(date_, t_to)
+    delta = end - start
+    return max(delta.total_seconds() / 3600.0, 0.0)
+
+def _month_nav(year: int, month: int) -> tuple[tuple[int,int], tuple[int,int]]:
+    prev_y = year - 1 if month == 1 else year
+    prev_m = 12 if month == 1 else month - 1
+    next_y = year + 1 if month == 12 else year
+    next_m = 1 if month == 12 else month + 1
+    return (prev_y, prev_m), (next_y, next_m)
+
+def _month_label(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+def _plan_for_day(d: dt.date, holidays: set[dt.date]) -> int:
+    return 0 if (d.weekday() >= 5 or d in holidays) else 8
+
+
+@login_required
+def zamestnanec_timesheet_view(request, zamestnanec_id):
+    """
+    Timesheet zaměstnance (měsíc × zakázky) + navigace šipkami:
+      - sloupce: dny v měsíci
+      - řádky: zakázky, na kterých v měsíci pracoval
+      - buňky: hodiny z výkazů pro daný den/zakázku
+      - spodní část: denní součty, plán (8h mimo víkend/svátek), denní rozdíl
+      - dole: měsíční součty a rozdíl, banka hodin
+      - přidáno: prev_ym / next_ym pro šipky
+    """
+    from decimal import Decimal
+
+    zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
+
+    # vybraný měsíc (ym=YYYY-MM) nebo aktuální
+    ym = request.GET.get("ym")
+    if ym:
+        year, month = map(int, ym.split("-"))
+    else:
+        today = now().date()
+        year, month = today.year, today.month
+
+    # šipky: předchozí / další měsíc
+    (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
+    prev_ym = f"{prev_y:04d}-{prev_m:02d}"
+    next_ym = f"{next_y:04d}-{next_m:02d}"
+
+    ndays = calendar.monthrange(year, month)[1]
+    first_day = dt.date(year, month, 1)
+    last_day = dt.date(year, month, ndays)
+
+    holidays = _cz_holidays(year)
+
+    # výkazy v měsíci
+    qs = (
+        ZakazkaZamestnanec.objects
+        .filter(zamestnanec=zam, den_prace__gte=first_day, den_prace__lte=last_day)
+        .select_related("zakazka")
+        .order_by("zakazka__zakazka_cislo", "den_prace")
+    )
+
+    # stabilní pořadí zakázek
+    zakazky_order = []
+    seen = set()
+    for v in qs:
+        if v.zakazka_id not in seen:
+            zakazky_order.append(v.zakazka)
+            seen.add(v.zakazka_id)
+
+    # mřížka hodin
+    grid = {z.id: [Decimal("0.0")] * ndays for z in zakazky_order}
+    for v in qs:
+        idx = (v.den_prace - first_day).days
+        hrs = Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do)))
+        grid.setdefault(v.zakazka_id, [Decimal("0.0")] * ndays)
+        grid[v.zakazka_id][idx] += hrs
+
+    # denní příznaky, plán a součty
+    sum_by_day = [Decimal("0.0")] * ndays
+    days_meta = []
+    plan_by_day = []
+    for i in range(ndays):
+        dte = first_day + dt.timedelta(days=i)
+        weekend = dte.weekday() >= 5
+        holiday = dte in holidays
+        plan_i = 0 if (weekend or holiday) else 8
+        plan_by_day.append(plan_i)
+
+        total_d = Decimal("0.0")
+        for zvals in grid.values():
+            total_d += zvals[i]
+        sum_by_day[i] = total_d
+
+        # denní rozdíl
+        diff_i = total_d - Decimal(str(plan_i))
+
+        days_meta.append({
+            "date": dte,
+            "num": i + 1,
+            "weekend": weekend,
+            "holiday": holiday,
+            "plan": plan_i,
+            "sum": total_d.quantize(Decimal("0.01")),
+            "diff": diff_i.quantize(Decimal("0.01")),
+        })
+
+    # řádky tabulky
+    rows = []
+    month_total = Decimal("0.0")
+    for z in zakazky_order:
+        vals = [v.quantize(Decimal("0.01")) for v in grid.get(z.id, [Decimal("0.0")] * ndays)]
+        row_total = sum(vals, Decimal("0.0"))
+        cells = [{
+            "value": vals[i],
+            "weekend": days_meta[i]["weekend"],
+            "holiday": days_meta[i]["holiday"],
+        } for i in range(ndays)]
+        rows.append({
+            "zakazka": z,
+            "cells": cells,
+            "total": row_total.quantize(Decimal("0.01")),
+        })
+        month_total += row_total
+    month_total = month_total.quantize(Decimal("0.01"))
+
+    plan_total = sum((Decimal(str(p)) for p in plan_by_day), Decimal("0.0")).quantize(Decimal("0.01"))
+    diff_total = (month_total - plan_total).quantize(Decimal("0.01"))
+
+    # banka hodin (aktuální + projekce)
+    bank_now = getattr(zam, "banka_hodin", None)
+    if bank_now is None:
+        bank_now = UzaverkaMesice.objects.filter(zamestnanec=zam).aggregate(s=Sum("delta_hodin"))["s"] or Decimal("0.0")
+    elif not isinstance(bank_now, Decimal):
+        bank_now = Decimal(str(bank_now))
+
+    closed_rec = UzaverkaMesice.objects.filter(zamestnanec=zam, rok=year, mesic=month).first()
+    month_closed = bool(closed_rec)
+    projected_bank = bank_now if month_closed else (bank_now + diff_total)
+
+    context = {
+        "zamestnanec": zam,
+        "year": year,
+        "month": month,
+        "ym": f"{year:04d}-{month:02d}",
+        "first_day": first_day,
+        "last_day": last_day,
+
+        "prev_ym": prev_ym,
+        "next_ym": next_ym,
+
+        "days": days_meta,   # obsahuje sum, plan, diff + příznaky dne
+        "rows": rows,
+        "plan_total": plan_total,
+        "month_total": month_total,
+        "diff_total": diff_total,
+
+        "bank_now": bank_now.quantize(Decimal("0.01")),
+        "projected_bank": projected_bank.quantize(Decimal("0.01")),
+        "month_closed": month_closed,
+    }
+    return render(request, "zamestnanec_timesheet.html", context)
+
+
+@login_required
+def uzavrit_mesic_view(request, zamestnanec_id: int, rok: int, mesic: int):
+    """
+    Uzavře měsíc (GET pro jednoduchost – interní nástroj). Spočítá rozdíl a připíše do banky hodin.
+    """
+    zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
+    rok = int(rok); mesic = int(mesic)
+
+    if UzaverkaMesice.objects.filter(zamestnanec=zam, rok=rok, mesic=mesic).exists():
+        messages.info(request, "Tento měsíc je už uzavřen.")
+        return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={_month_label(rok, mesic)}")
+
+    first_day, last_day, ndays = _month_bounds(rok, mesic)
+    holidays = _cz_holidays(rok)
+
+    vykazy = ZakazkaZamestnanec.objects.filter(
+        zamestnanec=zam, den_prace__gte=first_day, den_prace__lte=last_day
+    )
+
+    actual_total = sum(
+        (Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do))) for v in vykazy),
+        Decimal("0.0")
+    )
+    plan_total = sum(
+        (Decimal(str(_plan_for_day(first_day + dt.timedelta(days=i), holidays))) for i in range(ndays)),
+        Decimal("0.0")
+    )
+    delta = actual_total - plan_total
+
+    UzaverkaMesice.objects.create(zamestnanec=zam, rok=rok, mesic=mesic, delta_hodin=delta)
+    try:
+        # pokud má Zamestnanec pole banka_hodin (Decimal)
+        zam.banka_hodin = (zam.banka_hodin or Decimal("0.0")) + delta
+        zam.save(update_fields=["banka_hodin"])
+    except Exception:
+        # když pole neexistuje, tiše ignoruj
+        pass
+
+    messages.success(
+        request,
+        f"Uzavřeno. Rozdíl {delta:+.2f} h zapsán do banky hodin."
+    )
+    return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={_month_label(rok, mesic)}")
+
+@login_required
+def otevrit_mesic_view(request, zamestnanec_id: int, rok: int, mesic: int):
+    """
+    Zruší uzavření měsíce (rollback).
+    Smaže záznam v UzaverkaMesice a odečte delta_hodin z banky hodin zaměstnance.
+    """
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může měnit uzavření měsíců.")
+
+    zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
+    rok = int(rok); mesic = int(mesic)
+
+    rec = UzaverkaMesice.objects.filter(zamestnanec=zam, rok=rok, mesic=mesic).first()
+    if not rec:
+        messages.info(request, "Tento měsíc není uzavřen — není co zrušit.")
+        return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={_month_label(rok, mesic)}")
+
+    delta = rec.delta_hodin  # Decimal
+    with transaction.atomic():
+        rec.delete()
+        try:
+            zam.banka_hodin = (zam.banka_hodin or Decimal("0.0")) - delta
+            zam.save(update_fields=["banka_hodin"])
+        except Exception:
+            # pokud by pole nebylo, tiše ignorujeme (jako v uzavření)
+            pass
+
+    messages.success(request, f"Uzavření zrušeno. Úprava banky hodin: {delta:+.2f} h byla vrácena.")
+    return redirect(f"{reverse('zamestnanec_timesheet', args=[zam.id])}?ym={_month_label(rok, mesic)}")
