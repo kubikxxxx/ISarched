@@ -1,4 +1,4 @@
-{% load static %}
+{% load static formaty %}
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -24,6 +24,7 @@
         <a class="btn btn-sm btn-outline-secondary" href="?ym={{ prev_ym }}" title="Předchozí měsíc">‹</a>
         <form method="get" class="d-inline-flex align-items-center gap-2">
           <input type="month" name="ym" value="{{ ym }}" class="form-control form-control-sm">
+          <button class="btn btn-sm btn-primary">Změnit</button>
         </form>
         <a class="btn btn-sm btn-outline-secondary" href="?ym={{ next_ym }}" title="Další měsíc">›</a>
         <a href="{% url 'homepage' %}" class="btn btn-sm btn-outline-secondary">← Zpět</a>
@@ -34,19 +35,19 @@
     <div class="row g-3 mb-3">
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Aktivní zakázky</div>
-        <div class="kpi-value">{{ kpi.projects_active }}</div>
+        <div class="kpi-value">{{ kpi.projects_active|format_cislo }}</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Aktivní zaměstnanci</div>
-        <div class="kpi-value">{{ kpi.employees_active }}</div>
+        <div class="kpi-value">{{ kpi.employees_active|format_cislo }}</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Klienti</div>
-        <div class="kpi-value">{{ kpi.clients }}</div>
+        <div class="kpi-value">{{ kpi.clients|format_cislo }}</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Subdodavatelé</div>
-        <div class="kpi-value">{{ kpi.subdodavatels }}</div>
+        <div class="kpi-value">{{ kpi.subdodavatels|format_cislo }}</div>
       </div></div>
     </div>
 
@@ -54,19 +55,19 @@
     <div class="row g-3 mb-4">
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Skutečné hodiny</div>
-        <div class="kpi-value">{{ total_hours|floatformat:2 }} h</div>
+        <div class="kpi-value">{{ total_hours|format_cislo2:0 }} h</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Plán hodin</div>
-        <div class="kpi-value">{{ plan_total|floatformat:2 }} h</div>
+        <div class="kpi-value">{{ plan_total|format_cislo2:0 }} h</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Rozdíl (skut. − plán)</div>
-        <div class="kpi-value {% if diff_total >= 0 %}pos{% else %}neg{% endif %}">{{ diff_total|floatformat:2 }} h</div>
+        <div class="kpi-value {% if diff_total >= 0 %}pos{% else %}neg{% endif %}">{{ diff_total|format_cislo2:0 }} h</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Najeté km</div>
-        <div class="kpi-value">{{ total_km|floatformat:2 }} km</div>
+        <div class="kpi-value">{{ total_km|format_cislo2:0 }} km</div>
       </div></div>
     </div>
 
@@ -74,35 +75,35 @@
     <div class="row g-3 mb-4">
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Mzdy (zaměstnanci)</div>
-        <div class="kpi-value">{{ salary_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ salary_total|format_cislo2:0 }} Kč</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Mzdové (externisté)</div>
-        <div class="kpi-value">{{ labor_cost_external_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ labor_cost_external_total|format_cislo2:0 }} Kč</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Cestovní náklady</div>
-        <div class="kpi-value">{{ travel_cost_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ travel_cost_total|format_cislo2:0 }} Kč</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
         <div class="kpi-title">Režie (měsíc)</div>
-        <div class="kpi-value">{{ overhead_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ overhead_total|format_cislo2:0 }} Kč</div>
       </div></div>
     </div>
 
     <div class="row g-3 mb-4">
       <div class="col-6 col-md-4"><div class="kpi-card">
         <div class="kpi-title">Interní náklady celkem</div>
-        <div class="kpi-value">{{ internal_cost_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ internal_cost_total|format_cislo2:0 }} Kč</div>
       </div></div>
       <div class="col-6 col-md-4"><div class="kpi-card">
         <div class="kpi-title">Výnosy</div>
-        <div class="kpi-value">{{ revenue_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value">{{ revenue_total|format_cislo2:0 }} Kč</div>
         <div class="small-note mt-2">Výnosy = sazba na zakázce × odpracované hodiny.</div>
       </div></div>
       <div class="col-6 col-md-4"><div class="kpi-card">
         <div class="kpi-title">Marže</div>
-        <div class="kpi-value {% if margin_total >= 0 %}pos{% else %}neg{% endif %}">{{ margin_total|floatformat:2 }} Kč</div>
+        <div class="kpi-value {% if margin_total >= 0 %}pos{% else %}neg{% endif %}">{{ margin_total|format_cislo2:0 }} Kč</div>
       </div></div>
     </div>
 
@@ -113,7 +114,7 @@
           <div class="d-flex justify-content-between align-items-center">
             <div>
               <div class="kpi-title">Nové zakázky v období</div>
-              <div class="kpi-value">{{ new_projects|length }}</div>
+              <div class="kpi-value">{{ new_projects|length|format_cislo }}</div>
             </div>
           </div>
           <div class="mt-3 table-responsive">
@@ -139,7 +140,7 @@
           <div class="d-flex justify-content-between align-items-center">
             <div>
               <div class="kpi-title">Ukončené zakázky v období</div>
-              <div class="kpi-value">{{ closed_projects|length }}</div>
+              <div class="kpi-value">{{ closed_projects|length|format_cislo }}</div>
             </div>
           </div>
           <div class="mt-3 table-responsive">
@@ -184,13 +185,13 @@
               {% for r in by_emp %}
                 <tr>
                   <td>{{ r.emp.jmeno }} {{ r.emp.prijmeni }}</td>
-                  <td class="text-end">{{ r.hours|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.km|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.labor_cost|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.travel_cost|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.total_cost|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.revenue|floatformat:2 }}</td>
-                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|floatformat:2 }}</td>
+                  <td class="text-end">{{ r.hours|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.km|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.labor_cost|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.travel_cost|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.total_cost|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.revenue|format_cislo2:0 }}</td>
+                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|format_cislo2:0 }}</td>
                 </tr>
               {% empty %}
                 <tr><td colspan="8" class="text-muted text-center">Žádná data.</td></tr>
@@ -220,11 +221,11 @@
               {% for r in by_proj %}
                 <tr>
                   <td>{{ r.zakazka.zakazka_cislo }} – {{ r.zakazka.nazev }}</td>
-                  <td class="text-end">{{ r.hours|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.km|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.total_cost|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.revenue|floatformat:2 }}</td>
-                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|floatformat:2 }}</td>
+                  <td class="text-end">{{ r.hours|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.km|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.total_cost|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.revenue|format_cislo2:0 }}</td>
+                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|format_cislo2:0 }}</td>
                 </tr>
               {% empty %}
                 <tr><td colspan="6" class="text-muted text-center">Žádná data.</td></tr>
@@ -253,10 +254,10 @@
               {% for r in by_client %}
                 <tr>
                   <td>{{ r.klient.nazev }}</td>
-                  <td class="text-end">{{ r.hours|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.total_cost|floatformat:2 }}</td>
-                  <td class="text-end">{{ r.revenue|floatformat:2 }}</td>
-                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|floatformat:2 }}</td>
+                  <td class="text-end">{{ r.hours|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.total_cost|format_cislo2:0 }}</td>
+                  <td class="text-end">{{ r.revenue|format_cislo2:0 }}</td>
+                  <td class="text-end {% if r.margin >= 0 %}pos{% else %}neg{% endif %}">{{ r.margin|format_cislo2:0 }}</td>
                 </tr>
               {% empty %}
                 <tr><td colspan="5" class="text-muted text-center">Žádná data.</td></tr>
