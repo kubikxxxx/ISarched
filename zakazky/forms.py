@@ -32,42 +32,23 @@ class ZakazkaForm(forms.ModelForm):
         widget=forms.DateInput(attrs={'type': 'date'}),
         required=False
     )
-
     zakazka_start = forms.DateTimeField(
         label='Začátek zakázky',
         required=False,
         initial=now,
         widget=forms.DateInput(attrs={'type': 'date'})
     )
-
     zakazka_konec_predp = forms.DateTimeField(
         label='Předpokládaný konec',
         required=False,
         widget=forms.DateInput(attrs={'type': 'date'})
     )
-
-    nazev = forms.CharField(
-        label='Název',
-        max_length=50
-    )
-
-    popis_zadani = forms.CharField(
-        label='Zadání',
-        widget=Textarea(attrs={'rows': 3})
-    )
-
+    nazev = forms.CharField(label='Název', max_length=50)
+    popis_zadani = forms.CharField(label='Zadání', widget=Textarea(attrs={'rows': 3}))
     zakazka_cislo = forms.CharField(label='Číslo zakázky', max_length=50)
-
     predpokladany_cas = forms.IntegerField(label='Předpokládaný čas (h)', min_value=0)
-
-    misto_stavby = forms.CharField(
-        label='Místo stavby',
-        widget=Textarea(attrs={'rows': 2}),
-        strip=True
-    )
-
+    misto_stavby = forms.CharField(label='Místo stavby', widget=Textarea(attrs={'rows': 2}), strip=True)
     plna_moc = forms.BooleanField(label='Plná moc', required=False)
-
     orientacni_naklady = forms.IntegerField(label='Orientační náklady')
 
     class Meta:
@@ -77,17 +58,21 @@ class ZakazkaForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        try:
-            latest = Sazba.objects.latest('sazba_start')
-            self.fields['sazba_hodnota'].initial = latest.hodnota
-        except Sazba.DoesNotExist:
-            self.fields['sazba_hodnota'].initial = 0
+        # 🔹 EDITACE: předvyplň sazbu z dané zakázky
+        if self.instance and self.instance.pk and getattr(self.instance, "sazba_id", None):
+            self.fields['sazba_hodnota'].initial = self.instance.sazba.hodnota
+        else:
+            # 🔹 VYTVOŘENÍ: když existuje nějaká sazba, nabídni nejnovější, jinak 0
+            latest = Sazba.objects.order_by('-sazba_start').first()
+            self.fields['sazba_hodnota'].initial = latest.hodnota if latest else 0
 
+        # Datumová pole předvyplnit v ISO formátu (pro <input type="date">)
         for field_name in ['termin', 'zakazka_start', 'zakazka_konec_predp', 'zakazka_konec_skut']:
             value = getattr(self.instance, field_name, None)
             if value:
                 self.initial[field_name] = value.strftime('%Y-%m-%d')
 
+    # (volitelné) – tyhle clean_* nechávám, jak je máš
     def clean_termin(self):
         datum = self.cleaned_data.get('termin')
         if datum and isinstance(datum, datetime):
@@ -114,8 +99,16 @@ class ZakazkaForm(forms.ModelForm):
 
     def save(self, commit=True):
         zakazka = super().save(commit=False)
-        sazba = Sazba.objects.create(hodnota=self.cleaned_data['sazba_hodnota'], sazba_start=now())
-        zakazka.sazba = sazba
+        nova_hodnota = self.cleaned_data['sazba_hodnota']
+
+        # 🔹 Pokud je to editace a hodnota sazby se nezměnila → ponech původní Sazba
+        if zakazka.pk and zakazka.sazba_id and zakazka.sazba.hodnota == nova_hodnota:
+            pass
+        else:
+            # jinak vytvoř novou Sazba (nový ceník od teď) a přiřaď ji
+            sazba = Sazba.objects.create(hodnota=nova_hodnota, sazba_start=now())
+            zakazka.sazba = sazba
+
         if commit:
             zakazka.save()
         return zakazka

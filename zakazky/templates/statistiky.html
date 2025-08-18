@@ -3,7 +3,7 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <title>Statistiky – {{ ym }}</title>
+  <title>Statistiky</title>
   <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
   <style>
     .kpi-card { border:1px solid #e9ecef; border-radius:.75rem; padding:1rem; background:#fff; }
@@ -13,20 +13,52 @@
     .neg { color:#dc3545; font-weight:600; }
     .small-note { font-size:.85rem; color:#6c757d; }
     .table-sm td, .table-sm th { vertical-align: middle; }
+
+    /* hlavičkové ovládání: držet v jednom řádku */
+    .controls { display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; }
+    .btn-nowrap { white-space: nowrap; }
+    .period-label { min-width: 170px; text-align:center; font-weight:600; }
   </style>
 </head>
 <body class="p-3">
   <div class="container-fluid">
-    <!-- Hlavička + navigace měsíců -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-      <h4 class="mb-0">📊 Statistiky – {{ first_day|date:"F Y" }}</h4>
-      <div class="d-flex align-items-center gap-2">
-        <a class="btn btn-sm btn-outline-secondary" href="?ym={{ prev_ym }}" title="Předchozí měsíc">‹</a>
-        <form method="get" class="d-inline-flex align-items-center gap-2">
-          <input type="month" name="ym" value="{{ ym }}" class="form-control form-control-sm">
+    <!-- Hlavička + volba rozsahu -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="me-3">
+        <h4 class="mb-0">📊 Statistiky</h4>
+        {% if calc_until and calc_until < last_day %}
+          <div class="text-muted small">počítáno do {{ calc_until|date:"j.n.Y" }}</div>
+        {% endif %}
+        <div class="text-muted small">
+          Období: {{ first_day|date:"j.n.Y" }} – {{ calc_until|date:"j.n.Y" }}
+        </div>
+      </div>
+
+      <div class="controls">
+        <!-- přepínač rozsahu -->
+        <form method="get" class="controls" id="scopeForm">
+          <select name="scope" class="form-select form-select-sm" onchange="this.form.requestSubmit()">
+            <option value="month" {% if scope == 'month' %}selected{% endif %}>Měsíc</option>
+            <option value="year"  {% if scope == 'year'  %}selected{% endif %}>Rok</option>
+            <option value="all"   {% if scope == 'all'   %}selected{% endif %}>Vše</option>
+          </select>
         </form>
-        <a class="btn btn-sm btn-outline-secondary" href="?ym={{ next_ym }}" title="Další měsíc">›</a>
-        <a href="{% url 'homepage' %}" class="btn btn-sm btn-outline-secondary">← Zpět</a>
+
+        {% if scope == 'month' %}
+          <a class="btn btn-sm btn-outline-secondary" href="?scope=month&ym={{ prev_ym }}" title="Předchozí měsíc">‹</a>
+          <span class="period-label">{{ first_day|date:"F Y" }}</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?scope=month&ym={{ next_ym }}" title="Další měsíc">›</a>
+
+        {% elif scope == 'year' %}
+          <a class="btn btn-sm btn-outline-secondary" href="?scope=year&y={{ prev_y }}" title="Předchozí rok">‹</a>
+          <span class="period-label">{{ first_day|date:"Y" }}</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?scope=year&y={{ next_y }}" title="Další rok">›</a>
+
+        {% else %}
+          <span class="badge bg-secondary">Vše</span>
+        {% endif %}
+
+        <a href="{% url 'homepage' %}" class="btn btn-sm btn-outline-secondary btn-nowrap ms-2">← Zpět</a>
       </div>
     </div>
 
@@ -85,7 +117,7 @@
         <div class="kpi-value">{{ travel_cost_total|format_cislo2:0 }} Kč</div>
       </div></div>
       <div class="col-6 col-md-3"><div class="kpi-card">
-        <div class="kpi-title">Režie (měsíc)</div>
+        <div class="kpi-title">Režie (období)</div>
         <div class="kpi-value">{{ overhead_total|format_cislo2:0 }} Kč</div>
       </div></div>
     </div>
@@ -106,7 +138,7 @@
       </div></div>
     </div>
 
-    <!-- Přehled nových / ukončených zakázek v měsíci (jen datum) -->
+    <!-- Přehled nových / ukončených zakázek v období -->
     <div class="row g-3 mb-4">
       <div class="col-12 col-md-6">
         <div class="kpi-card">
@@ -198,7 +230,7 @@
             </tbody>
           </table>
         </div>
-        <div class="small-note">* Marže v rozpadech je bez režijních nákladů (ty jsou jen v měsíčním souhrnu).</div>
+        <div class="small-note">* Marže v rozpadech je bez režijních nákladů (ty jsou jen v souhrnu).</div>
       </div>
 
       <!-- Zakázky -->
