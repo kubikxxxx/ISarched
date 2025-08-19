@@ -1,4 +1,4 @@
-{% load static %}
+{% load static formaty %}
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -77,10 +77,14 @@
               <td class="left-col">{{ r.zakazka.zakazka_cislo }} – {{ r.zakazka.nazev }}</td>
               {% for c in r.cells %}
                 <td class="{% if c.weekend %}wknd{% endif %}{% if c.holiday %} hol{% endif %}">
-                  {% if c.value and c.value|floatformat:2 != '0.00' %}{{ c.value|floatformat:2 }}{% else %}-{% endif %}
+                  {% if c.value and c.value != 0 %}
+                    {{ c.value|hodiny_hhmm }}
+                  {% else %}
+                    -
+                  {% endif %}
                 </td>
               {% endfor %}
-              <td class="tot-col">{{ r.total|floatformat:2 }}</td>
+              <td class="tot-col">{{ r.total|hodiny_hhmm }}</td>
             </tr>
           {% endfor %}
         {% else %}
@@ -92,9 +96,9 @@
           <tr class="row-sum">
             <th class="text-end">Součet dne</th>
             {% for d in days %}
-              <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.sum|floatformat:2 }}</th>
+              <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.sum|hodiny_hhmm }}</th>
             {% endfor %}
-            <th class="tot-col">{{ month_total|floatformat:2 }}</th>
+            <th class="tot-col">{{ month_total|hodiny_hhmm }}</th>
           </tr>
 
           {% if user.is_authenticated and user.is_admin and request.GET.edit_plan %}
@@ -105,7 +109,7 @@
                 {% for d in days %}
                   <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">
                     <input type="number" name="plan_{% firstof forloop.counter %}" step="0.5" min="0" max="24"
-                           value="{{ d.plan|floatformat:2 }}" class="form-control form-control-sm plan-input">
+                           value="{{ d.plan }}" class="form-control form-control-sm plan-input">
                   </th>
                 {% endfor %}
                 <th class="tot-col">
@@ -118,32 +122,32 @@
             <tr class="row-plan">
               <th class="text-end">Plán (h)</th>
               {% for d in days %}
-                <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.plan|floatformat:2 }}</th>
+                <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.plan|hodiny_hhmm }}</th>
               {% endfor %}
-              <th class="tot-col">{{ plan_total|floatformat:2 }}</th>
+              <th class="tot-col">{{ plan_total|hodiny_hhmm }}</th>
             </tr>
           {% endif %}
 
           <tr>
             <th class="text-end">Denní rozdíl</th>
             {% for d in days %}
-              <th class="{% if d.weekend %}wknd{% elif d.holiday %}hol{% elif d.diff >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ d.diff|floatformat:2 }}</th>
+              <th class="{% if d.weekend %}wknd{% elif d.holiday %}hol{% elif d.diff >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ d.diff|hodiny_hhmm }}</th>
             {% endfor %}
-            <th class="tot-col {% if diff_total >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ diff_total|floatformat:2 }}</th>
+            <th class="tot-col {% if diff_total >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ diff_total|hodiny_hhmm }}</th>
           </tr>
         </tfoot>
       </table>
     </div>
 
     <div class="mt-3">
-      <div><strong>Odpracováno celkem:</strong> {{ month_total|floatformat:2 }} h</div>
-      <div><strong>Plán na měsíc:</strong> {{ plan_total|floatformat:2 }} h</div>
+      <div><strong>Odpracováno celkem:</strong> {{ month_total|hodiny_hhmm }} h</div>
+      <div><strong>Plán na měsíc:</strong> {{ plan_total|hodiny_hhmm }} h</div>
       <div>
         <strong>Rozdíl:</strong>
-        <span class="{% if diff_total >= 0 %}text-success fw-bold{% else %}text-danger fw-bold{% endif %}">{{ diff_total|floatformat:2 }} h</span>
+        <span class="{% if diff_total >= 0 %}text-success fw-bold{% else %}text-danger fw-bold{% endif %}">{{ diff_total|hodiny_hhmm }} h</span>
       </div>
-      <div class="mt-2"><strong>Nadpracované hodiny – aktuální:</strong> {{ bank_now|floatformat:2 }} h</div>
-      <div><strong>Nadpracované hodiny – po započtení tohoto měsíce{% if month_closed %} (uzavřeno){% endif %}:</strong> {{ projected_bank|floatformat:2 }} h</div>
+      <div class="mt-2"><strong>Nadpracované hodiny – aktuální:</strong> {{ bank_now|hodiny_hhmm }} h</div>
+      <div><strong>Nadpracované hodiny – po započtení tohoto měsíce{% if month_closed %} (uzavřeno){% endif %}:</strong> {{ projected_bank|hodiny_hhmm }} h</div>
     </div>
   </div>
 

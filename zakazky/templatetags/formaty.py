@@ -35,3 +35,18 @@ def format_cislo2(value, places=2):
 @register.filter
 def attr(obj, attr_name):
     return getattr(obj, attr_name, '')
+
+@register.filter
+def hodiny_hhmm(value):
+    """
+    1.5 -> '01:30', -2.25 -> '-02:15'
+    """
+    try:
+        total_minutes = int(round(float(value) * 60))
+    except (TypeError, ValueError):
+        return value
+    sign = "-" if total_minutes < 0 else ""
+    total_minutes = abs(total_minutes)
+    h = total_minutes // 60
+    m = total_minutes % 60
+    return f"{sign}{h:02d}:{m:02d}"
