@@ -202,9 +202,25 @@
                                                 {% else %}–{% endif %}
                                             </td>
                                         </tr>
+                                        <tr>
+                                            <th>Sjednaná cena</th>
+                                            <td>
+                                                {% if zakazka_detail.sjednana_cena is not None %}
+                                                    {{ zakazka_detail.sjednana_cena|format_cislo }} Kč
+                                                {% else %}–{% endif %}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Záloha</th>
+                                            <td>
+                                                {% if zakazka_detail.zaloha is not None %}
+                                                    {{ zakazka_detail.zaloha|format_cislo }} Kč
+                                                {% else %}–{% endif %}
+                                            </td>
+                                        </tr>
                                     {% endif %}
                                     <tr>
-                                        <th>Zadání</th>
+                                    <th>Zadání</th>
                                         <td>{{ zakazka_detail.popis_zadani }}</td>
                                     </tr>
                                     <tr>

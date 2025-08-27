@@ -50,6 +50,14 @@ class ZakazkaForm(forms.ModelForm):
     misto_stavby = forms.CharField(label='Místo stavby', widget=Textarea(attrs={'rows': 2}), strip=True)
     plna_moc = forms.BooleanField(label='Plná moc', required=False)
     orientacni_naklady = forms.IntegerField(label='Orientační náklady')
+    sjednana_cena = forms.DecimalField(
+        label='Sjednaná cena (Kč)',
+        max_digits=18, decimal_places=2, min_value=0, required=False
+    )
+    zaloha = forms.DecimalField(
+        label='Záloha (Kč)',
+        max_digits=18, decimal_places=2, min_value=0, required=False
+    )
 
     class Meta:
         model = Zakazka

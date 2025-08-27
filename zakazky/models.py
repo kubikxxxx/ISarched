@@ -167,6 +167,7 @@ class Zakazka(models.Model):
     sazba = models.ForeignKey('Sazba', on_delete=models.SET_NULL, null=True, blank=True, db_column='ID_Sazba')
     zakazka_cislo = models.TextField(db_column='ZakazkaCislo')
     nazev = models.TextField()
+
     termin = models.DateTimeField(default=datetime(2025, 9, 1, 0, 0))  # <-- pevné výchozí datum
     zakazka_start = models.DateTimeField(null=True, blank=True)
     zakazka_konec_predp = models.DateTimeField(null=True, blank=True)
@@ -177,6 +178,20 @@ class Zakazka(models.Model):
     plna_moc = models.BooleanField()
     hip = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="HIP")
     popis_zadani = models.TextField()
+    sjednana_cena = models.DecimalField(
+        "Sjednaná cena",
+        max_digits=18,
+        decimal_places=2,
+        null=True,      # ← nepovinné
+        blank=True,     # ← nepovinné
+    )
+    zaloha = models.DecimalField(
+        "Záloha",
+        max_digits=18,
+        decimal_places=2,
+        null=True,      # ← nepovinné
+        blank=True,     # ← nepovinné
+    )
 
     class Meta:
         db_table = 'Zakazka'
