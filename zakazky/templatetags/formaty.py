@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django import template
@@ -50,3 +51,20 @@ def hodiny_hhmm(value):
     h = total_minutes // 60
     m = total_minutes % 60
     return f"{sign}{h:02d}:{m:02d}"
+
+@register.filter
+def trvani_hodin(vykaz):
+    """
+    Vrátí trvání výkazu v hodinách (float), aby se dalo řetězit s |hodiny_hhmm.
+    Pokud nejsou časy, vrací 0.
+    """
+    try:
+        if not (vykaz and vykaz.den_prace and vykaz.cas_od and vykaz.cas_do):
+            return 0.0
+        start = datetime.combine(vykaz.den_prace, vykaz.cas_od)
+        end = datetime.combine(vykaz.den_prace, vykaz.cas_do)
+        delta = end - start
+        secs = max(delta.total_seconds(), 0)
+        return secs / 3600.0
+    except Exception:
+        return 0.0

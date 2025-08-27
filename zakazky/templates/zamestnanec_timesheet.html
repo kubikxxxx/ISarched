@@ -31,9 +31,7 @@
           <a class="btn btn-sm btn-outline-secondary" href="?ym={{ prev_ym }}" title="Předchozí měsíc">‹</a>
         </div>
 
-        <form method="get" class="d-inline-flex align-items-center gap-2">
-          <input type="month" name="ym" value="{{ ym }}" class="form-control form-control-sm">
-        </form>
+        <div class="px-2 text-muted">{{ ym }}</div>
 
         <div class="btn-group" role="group" aria-label="Navigace měsíců">
           <a class="btn btn-sm btn-outline-secondary" href="?ym={{ next_ym }}" title="Další měsíc">›</a>
@@ -67,6 +65,8 @@
               <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.num }}</th>
             {% endfor %}
             <th class="tot-col">Σ řádek</th>
+            {# ⬇️ NOVÝ SLOUPEC #}
+            <th class="tot-col">Km</th>
           </tr>
         </thead>
 
@@ -79,16 +79,16 @@
                 <td class="{% if c.weekend %}wknd{% endif %}{% if c.holiday %} hol{% endif %}">
                   {% if c.value and c.value != 0 %}
                     {{ c.value|hodiny_hhmm }}
-                  {% else %}
-                    -
-                  {% endif %}
+                  {% else %}-{% endif %}
                 </td>
               {% endfor %}
               <td class="tot-col">{{ r.total|hodiny_hhmm }}</td>
+              {# ⬇️ Součet km pro zakázku v měsíci #}
+              <td class="tot-col">{{ r.km_total|floatformat:0|format_cislo }}</td>
             </tr>
           {% endfor %}
         {% else %}
-          <tr><td colspan="{{ days|length|add:2 }}" class="text-center text-muted">Žádné výkazy v tomto měsíci.</td></tr>
+          <tr><td colspan="{{ days|length|add:3 }}" class="text-center text-muted">Žádné výkazy v tomto měsíci.</td></tr>
         {% endif %}
         </tbody>
 
@@ -99,6 +99,8 @@
               <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.sum|hodiny_hhmm }}</th>
             {% endfor %}
             <th class="tot-col">{{ month_total|hodiny_hhmm }}</th>
+            {# ⬇️ Celkové km v měsíci #}
+            <th class="tot-col">{{ month_km_total|floatformat:0|format_cislo }}</th>
           </tr>
 
           {% if user.is_authenticated and user.is_admin and request.GET.edit_plan %}
@@ -116,6 +118,7 @@
                   <button class="btn btn-sm btn-primary">Uložit</button>
                   <a href="?ym={{ ym }}" class="btn btn-sm btn-outline-secondary">Zrušit</a>
                 </th>
+                <th class="tot-col">–</th>
               </tr>
             </form>
           {% else %}
@@ -125,6 +128,7 @@
                 <th class="{% if d.weekend %}wknd{% endif %}{% if d.holiday %} hol{% endif %}">{{ d.plan|hodiny_hhmm }}</th>
               {% endfor %}
               <th class="tot-col">{{ plan_total|hodiny_hhmm }}</th>
+              <th class="tot-col">–</th>
             </tr>
           {% endif %}
 
@@ -134,6 +138,7 @@
               <th class="{% if d.weekend %}wknd{% elif d.holiday %}hol{% elif d.diff >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ d.diff|hodiny_hhmm }}</th>
             {% endfor %}
             <th class="tot-col {% if diff_total >= 0 %}diff-pos-cell{% else %}diff-neg-cell{% endif %}">{{ diff_total|hodiny_hhmm }}</th>
+            <th class="tot-col">–</th>
           </tr>
         </tfoot>
       </table>
@@ -148,6 +153,9 @@
       </div>
       <div class="mt-2"><strong>Nadpracované hodiny – aktuální:</strong> {{ bank_now|hodiny_hhmm }} h</div>
       <div><strong>Nadpracované hodiny – po započtení tohoto měsíce{% if month_closed %} (uzavřeno){% endif %}:</strong> {{ projected_bank|hodiny_hhmm }} h</div>
+
+      {# ⬇️ „Někde“ celkové km za měsíc – ještě jednou pro jistotu #}
+      <div class="mt-2"><strong>Najeto celkem v měsíci:</strong> {{ month_km_total|floatformat:0|format_cislo }} km</div>
     </div>
   </div>
 

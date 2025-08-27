@@ -18,7 +18,7 @@ from django.db.models import Sum
 import re
 from calendar import monthrange
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, render
 from django.utils.timezone import now
@@ -43,6 +43,21 @@ from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPozna
 from .models import Zakazka, Zamestnanec, Klient, KlientPoznamka, Subdodavka, Subdodavatel, ZakazkaSubdodavka, \
     UredniZapis, ZakazkaZamestnanec, ZamestnanecZakazka, RozsahPrace
 
+
+def _to_decimal(val: str | None, allow_empty: bool = False) -> Decimal | None:
+    """
+    Bezpečně převede '12 345,67' / '12345.67' -> Decimal.
+    Vrátí None, pokud je hodnota prázdná nebo neplatná (pokud allow_empty=False).
+    """
+    if val is None:
+        return Decimal("0") if allow_empty else None
+    s = str(val).strip().replace(" ", "").replace("\u00A0", "").replace(",", ".")
+    if s == "":
+        return Decimal("0") if allow_empty else None
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        return None
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -274,8 +289,6 @@ def homepage_view(request):
         'historie_urednich_zaznamu': historie_urednich_zaznamu,
         'historie_vykazu_prace': historie_vykazu_prace,
         'prirazeni_vypocty': prirazeni_vypocty,
-
-        # ➕ nové pro admina
         'proj_rate': proj_rate,
         'rev_actual': rev_actual,
         'rev_plan': rev_plan,
@@ -384,19 +397,29 @@ def zakazka_subdodavky_view(request, zakazka_id):
         for sid in selected_ids:
             sub_id = int(sid)
             subdodavatel_id = request.POST.get(f"subdodavatel_{sub_id}")
-            cena = request.POST.get(f"cena_{sub_id}")
-            navyseni = request.POST.get(f"navyseni_{sub_id}")
-            fakturace = request.POST.get(f"fakturace_{sub_id}")
+            cena_raw = request.POST.get(f"cena_{sub_id}")
+            navyseni_raw = request.POST.get(f"navyseni_{sub_id}")
+            fakturace = request.POST.get(f"fakturace_{sub_id}")  # "klient" | "arched"
 
-            # ✅ Validace
-            if not subdodavatel_id or not cena or not navyseni or not fakturace:
-                messages.error(request, f"Chybí údaje pro subdodávku ID {sub_id}. Všechna pole musí být vyplněna.")
+            cena = _to_decimal(cena_raw)
+            navyseni = _to_decimal(navyseni_raw)
+
+            # Validace vstupů
+            if not subdodavatel_id or cena is None or navyseni is None or fakturace not in ("klient", "arched"):
+                messages.error(
+                    request,
+                    f"Chyba u subdodávky ID {sub_id}: vyplňte subdodavatele, cenu a navýšení (číslo)."
+                )
                 return redirect(request.path)
+
+            # (volitelné) zaokrouhlení na 2 desetinná místa
+            cena = cena.quantize(Decimal("0.01"))
+            navyseni = navyseni.quantize(Decimal("0.01"))
 
             ZakazkaSubdodavka.objects.create(
                 zakazka=zakazka,
                 subdodavka_id=sub_id,
-                subdodavatel_id=subdodavatel_id,
+                subdodavatel_id=int(subdodavatel_id),
                 cena=cena,
                 navyseni=navyseni,
                 fakturuje_klientovi=(fakturace == "klient"),
@@ -404,7 +427,7 @@ def zakazka_subdodavky_view(request, zakazka_id):
             )
 
         messages.success(request, "Subdodávky byly uloženy.")
-        return redirect("homepage")  # nebo přesměrování zpět na detail zakázky
+        return redirect("homepage")
 
     return render(request, "zakazka_subdodavky_form.html", {
         "zakazka": zakazka,
@@ -974,10 +997,18 @@ def _plan_for_day(d: dt.date, holidays: set[dt.date]) -> int:
 
 @login_required
 def zamestnanec_timesheet_view(request, zamestnanec_id):
+    """
+    Timesheet zaměstnance (měsíc × zakázky) + NOVĚ:
+      - poslední sloupec „Km“ = součet naj. km pro danou zakázku v daném měsíci
+      - dole zobrazen celkový součet km za měsíc
+    """
     from decimal import Decimal
+    import datetime as dt
+    import calendar
 
     zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
 
+    # vybraný měsíc (ym=YYYY-MM) nebo aktuální
     ym = request.GET.get("ym")
     if ym:
         year, month = map(int, ym.split("-"))
@@ -985,15 +1016,18 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         today = now().date()
         year, month = today.year, today.month
 
-    (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
-    prev_ym = f"{prev_y:04d}-{prev_m:02d}"
-    next_ym = f"{next_y:04d}-{next_m:02d}"
-
     ndays = calendar.monthrange(year, month)[1]
     first_day = dt.date(year, month, 1)
     last_day = dt.date(year, month, ndays)
+
+    # pro šipky
+    (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
+    prev_ym = _month_label(prev_y, prev_m)
+    next_ym = _month_label(next_y, next_m)
+
     holidays = _cz_holidays(year)
 
+    # výkazy v měsíci
     qs = (
         ZakazkaZamestnanec.objects
         .filter(zamestnanec=zam, den_prace__gte=first_day, den_prace__lte=last_day)
@@ -1001,6 +1035,7 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         .order_by("zakazka__zakazka_cislo", "den_prace")
     )
 
+    # stabilní pořadí zakázek
     zakazky_order = []
     seen = set()
     for v in qs:
@@ -1008,13 +1043,20 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
             zakazky_order.append(v.zakazka)
             seen.add(v.zakazka_id)
 
+    # mřížka hodin + km po zakázkách
     grid = {z.id: [Decimal("0.0")] * ndays for z in zakazky_order}
+    km_by_z = {z.id: Decimal("0.0") for z in zakazky_order}
+
     for v in qs:
         idx = (v.den_prace - first_day).days
         hrs = Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do)))
         grid.setdefault(v.zakazka_id, [Decimal("0.0")] * ndays)
         grid[v.zakazka_id][idx] += hrs
 
+        km = Decimal(str(v.najete_km or 0))
+        km_by_z[v.zakazka_id] = km_by_z.get(v.zakazka_id, Decimal("0.0")) + km
+
+    # denní příznaky, plán a součty
     sum_by_day = [Decimal("0.0")] * ndays
     days_meta = []
     plan_by_day = []
@@ -1022,8 +1064,8 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         dte = first_day + dt.timedelta(days=i)
         weekend = dte.weekday() >= 5
         holiday = dte in holidays
-
-        plan_i = _plan_for_day_custom(zam, dte, holidays)
+        # plán z weekly plánu zaměstnance + svátky (pokud weekly plán používáš, jinak 8/0)
+        plan_i = _plan_for_day(dte, holidays)  # nebo tvůj vlastní výpočet z weekly plánu
         plan_by_day.append(plan_i)
 
         total_d = Decimal("0.0")
@@ -1031,43 +1073,53 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
             total_d += zvals[i]
         sum_by_day[i] = total_d
 
-        diff_i = total_d - plan_i
+        diff_i = total_d - Decimal(str(plan_i))
 
         days_meta.append({
             "date": dte,
             "num": i + 1,
             "weekend": weekend,
             "holiday": holiday,
-            "plan": plan_i.quantize(Decimal("0.01")),
-            "sum": total_d.quantize(Decimal("0.01")),
-            "diff": diff_i.quantize(Decimal("0.01")),
+            "plan": plan_i,
+            "sum": total_d,
+            "diff": diff_i,
+            "diff_pos": diff_i > 0,
+            "diff_neg": diff_i < 0,
         })
 
+    # řádky tabulky
     rows = []
     month_total = Decimal("0.0")
+    month_km_total = Decimal("0.0")
+
     for z in zakazky_order:
-        vals = [v.quantize(Decimal("0.01")) for v in grid.get(z.id, [Decimal("0.0")] * ndays)]
+        vals = [v for v in grid.get(z.id, [Decimal("0.0")] * ndays)]
         row_total = sum(vals, Decimal("0.0"))
+        km_total = km_by_z.get(z.id, Decimal("0.0"))
+
         cells = [{
             "value": vals[i],
             "weekend": days_meta[i]["weekend"],
             "holiday": days_meta[i]["holiday"],
         } for i in range(ndays)]
+
         rows.append({
             "zakazka": z,
             "cells": cells,
-            "total": row_total.quantize(Decimal("0.01")),
+            "total": row_total,
+            "km_total": km_total,
         })
         month_total += row_total
-    month_total = month_total.quantize(Decimal("0.01"))
+        month_km_total += km_total
 
-    plan_total = sum(plan_by_day, Decimal("0.0")).quantize(Decimal("0.01"))
-    diff_total = (month_total - plan_total).quantize(Decimal("0.01"))
+    plan_total = sum((Decimal(str(p)) for p in plan_by_day), Decimal("0.0"))
+    diff_total = (month_total - plan_total)
 
+    # banka hodin
     bank_now = getattr(zam, "banka_hodin", None)
     if bank_now is None:
         bank_now = UzaverkaMesice.objects.filter(zamestnanec=zam).aggregate(s=Sum("delta_hodin"))["s"] or Decimal("0.0")
-    elif not isinstance(bank_now, Decimal):
+    else:
         bank_now = Decimal(str(bank_now))
 
     closed_rec = UzaverkaMesice.objects.filter(zamestnanec=zam, rok=year, mesic=month).first()
@@ -1083,13 +1135,17 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         "last_day": last_day,
         "prev_ym": prev_ym,
         "next_ym": next_ym,
+
         "days": days_meta,
         "rows": rows,
         "plan_total": plan_total,
         "month_total": month_total,
         "diff_total": diff_total,
-        "bank_now": bank_now.quantize(Decimal("0.01")),
-        "projected_bank": projected_bank.quantize(Decimal("0.01")),
+
+        "month_km_total": month_km_total,
+
+        "bank_now": bank_now,
+        "projected_bank": projected_bank,
         "month_closed": month_closed,
     }
     return render(request, "zamestnanec_timesheet.html", context)
