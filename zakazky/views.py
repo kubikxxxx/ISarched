@@ -1,4 +1,5 @@
 # views.py
+from django.apps import apps
 from django.db import transaction
 from django.forms import modelformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
@@ -998,17 +999,21 @@ def _plan_for_day(d: dt.date, holidays: set[dt.date]) -> int:
 @login_required
 def zamestnanec_timesheet_view(request, zamestnanec_id):
     """
-    Timesheet zaměstnance (měsíc × zakázky) + NOVĚ:
-      - poslední sloupec „Km“ = součet naj. km pro danou zakázku v daném měsíci
-      - dole zobrazen celkový součet km za měsíc
+    Timesheet zaměstnance:
+      - sloupce: dny v měsíci (víkend/svátek barevně)
+      - řádky: zakázky (hodiny/den), na konci řádku součet hodin + součet KM za měsíc
+      - dole: součet dne, plán dne, denní rozdíl, měsíční součty
+      - respektuje individuální plán dne (PlanDen) a trvalý týdenní plán ze Zamestnanec
     """
     from decimal import Decimal
-    import datetime as dt
-    import calendar
+    import datetime as dt, calendar
+    from django.db.models import Sum
+    from django.shortcuts import get_object_or_404, render
+    from .models import ZakazkaZamestnanec, Zamestnanec, UzaverkaMesice, PlanDen
 
     zam = get_object_or_404(Zamestnanec, pk=zamestnanec_id)
 
-    # vybraný měsíc (ym=YYYY-MM) nebo aktuální
+    # vybraný měsíc
     ym = request.GET.get("ym")
     if ym:
         year, month = map(int, ym.split("-"))
@@ -1016,18 +1021,34 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
         today = now().date()
         year, month = today.year, today.month
 
+    # hranice měsíce
     ndays = calendar.monthrange(year, month)[1]
     first_day = dt.date(year, month, 1)
     last_day = dt.date(year, month, ndays)
 
-    # pro šipky
-    (prev_y, prev_m), (next_y, next_m) = _month_nav(year, month)
-    prev_ym = _month_label(prev_y, prev_m)
-    next_ym = _month_label(next_y, next_m)
-
+    # svátky
     holidays = _cz_holidays(year)
 
-    # výkazy v měsíci
+    # --- 1) Individuální plán dne (měsíční override z PlanDen.plan_hodin) ---
+    ov_qs = PlanDen.objects.filter(
+        zamestnanec=zam,
+        datum__gte=first_day,
+        datum__lte=last_day
+    ).values("datum", "plan_hodin")
+    overrides = {o["datum"]: Decimal(str(o["plan_hodin"] or 0)) for o in ov_qs}
+
+    # --- 2) Trvalý týdenní plán (Po..Ne) ze zaměstnance ----------------------
+    def _weekly_plan_for(z):
+        fields = ("plan_po","plan_ut","plan_st","plan_ct","plan_pa","plan_so","plan_ne")
+        vals = []
+        for f in fields:
+            v = getattr(z, f, None)
+            vals.append(Decimal(str(v)) if v is not None else None)
+        return vals
+
+    weekly = _weekly_plan_for(zam)
+
+    # --- výkazy v měsíci ------------------------------------------------------
     qs = (
         ZakazkaZamestnanec.objects
         .filter(zamestnanec=zam, den_prace__gte=first_day, den_prace__lte=last_day)
@@ -1036,66 +1057,75 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
     )
 
     # stabilní pořadí zakázek
-    zakazky_order = []
-    seen = set()
+    zakazky_order, seen = [], set()
     for v in qs:
         if v.zakazka_id not in seen:
             zakazky_order.append(v.zakazka)
             seen.add(v.zakazka_id)
 
-    # mřížka hodin + km po zakázkách
-    grid = {z.id: [Decimal("0.0")] * ndays for z in zakazky_order}
-    km_by_z = {z.id: Decimal("0.0") for z in zakazky_order}
+    # mřížka hodin (po dnech) + km součty po zakázkách
+    grid_hours = {z.id: [Decimal("0.0")] * ndays for z in zakazky_order}
+    proj_km = {z.id: Decimal("0.0") for z in zakazky_order}
 
     for v in qs:
         idx = (v.den_prace - first_day).days
         hrs = Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do)))
-        grid.setdefault(v.zakazka_id, [Decimal("0.0")] * ndays)
-        grid[v.zakazka_id][idx] += hrs
+        grid_hours.setdefault(v.zakazka_id, [Decimal("0.0")] * ndays)
+        grid_hours[v.zakazka_id][idx] += hrs
 
         km = Decimal(str(v.najete_km or 0))
-        km_by_z[v.zakazka_id] = km_by_z.get(v.zakazka_id, Decimal("0.0")) + km
+        proj_km[v.zakazka_id] = proj_km.get(v.zakazka_id, Decimal("0.0")) + km
 
-    # denní příznaky, plán a součty
+    # pomocná: plán pro konkrétní den (override > svátek=0 > týdenní plán > default)
+    def plan_for_day(d: dt.date) -> Decimal:
+        if d in overrides:
+            return overrides[d]
+        if d in holidays:
+            return Decimal("0.0")
+        w = d.weekday()  # 0=Po .. 6=Ne
+        base = weekly[w]
+        if base is not None:
+            return base
+        return Decimal("8.0") if w < 5 else Decimal("0.0")
+
+    # denní součty, plán a rozdíl
     sum_by_day = [Decimal("0.0")] * ndays
+    plan_by_day = [Decimal("0.0")] * ndays
     days_meta = []
-    plan_by_day = []
+
     for i in range(ndays):
         dte = first_day + dt.timedelta(days=i)
         weekend = dte.weekday() >= 5
         holiday = dte in holidays
-        # plán z weekly plánu zaměstnance + svátky (pokud weekly plán používáš, jinak 8/0)
-        plan_i = _plan_for_day(dte, holidays)  # nebo tvůj vlastní výpočet z weekly plánu
-        plan_by_day.append(plan_i)
 
-        total_d = Decimal("0.0")
-        for zvals in grid.values():
-            total_d += zvals[i]
+        total_d = sum((grid_hours[zid][i] for zid in grid_hours), Decimal("0.0"))
+        plan_i = plan_for_day(dte)
+        diff_i = total_d - plan_i
+
         sum_by_day[i] = total_d
-
-        diff_i = total_d - Decimal(str(plan_i))
+        plan_by_day[i] = plan_i
 
         days_meta.append({
             "date": dte,
             "num": i + 1,
             "weekend": weekend,
             "holiday": holiday,
+            "sum": total_d,      # formátování do HH:MM nechte na šabloně (filtr)
             "plan": plan_i,
-            "sum": total_d,
             "diff": diff_i,
             "diff_pos": diff_i > 0,
             "diff_neg": diff_i < 0,
         })
 
-    # řádky tabulky
+    # řádky tabulky (hodiny po dnech + součet hodin + součet km)
     rows = []
-    month_total = Decimal("0.0")
-    month_km_total = Decimal("0.0")
+    month_total_hours = Decimal("0.0")
+    month_total_km = Decimal("0.0")
 
     for z in zakazky_order:
-        vals = [v for v in grid.get(z.id, [Decimal("0.0")] * ndays)]
+        vals = grid_hours.get(z.id, [Decimal("0.0")] * ndays)
         row_total = sum(vals, Decimal("0.0"))
-        km_total = km_by_z.get(z.id, Decimal("0.0"))
+        row_km = proj_km.get(z.id, Decimal("0.0"))
 
         cells = [{
             "value": vals[i],
@@ -1107,48 +1137,53 @@ def zamestnanec_timesheet_view(request, zamestnanec_id):
             "zakazka": z,
             "cells": cells,
             "total": row_total,
-            "km_total": km_total,
+            "km_total": row_km,
         })
-        month_total += row_total
-        month_km_total += km_total
 
-    plan_total = sum((Decimal(str(p)) for p in plan_by_day), Decimal("0.0"))
-    diff_total = (month_total - plan_total)
+        month_total_hours += row_total
+        month_total_km += row_km
+
+    plan_total = sum(plan_by_day, Decimal("0.0"))
+    diff_total = (month_total_hours - plan_total)
 
     # banka hodin
     bank_now = getattr(zam, "banka_hodin", None)
     if bank_now is None:
         bank_now = UzaverkaMesice.objects.filter(zamestnanec=zam).aggregate(s=Sum("delta_hodin"))["s"] or Decimal("0.0")
-    else:
+    elif not isinstance(bank_now, Decimal):
         bank_now = Decimal(str(bank_now))
 
     closed_rec = UzaverkaMesice.objects.filter(zamestnanec=zam, rok=year, mesic=month).first()
     month_closed = bool(closed_rec)
     projected_bank = bank_now if month_closed else (bank_now + diff_total)
 
+    # šipková navigace
+    prev_y, prev_m = _month_nav(year, month)[0]
+    next_y, next_m = _month_nav(year, month)[1]
+    prev_ym = f"{prev_y:04d}-{prev_m:02d}"
+    next_ym = f"{next_y:04d}-{next_m:02d}"
+
     context = {
         "zamestnanec": zam,
-        "year": year,
-        "month": month,
+        "year": year, "month": month,
         "ym": f"{year:04d}-{month:02d}",
-        "first_day": first_day,
-        "last_day": last_day,
-        "prev_ym": prev_ym,
-        "next_ym": next_ym,
+        "prev_ym": prev_ym, "next_ym": next_ym,
+        "first_day": first_day, "last_day": last_day,
 
         "days": days_meta,
         "rows": rows,
         "plan_total": plan_total,
-        "month_total": month_total,
+        "month_total": month_total_hours,
         "diff_total": diff_total,
 
-        "month_km_total": month_km_total,
+        "month_km_total": month_total_km,
 
         "bank_now": bank_now,
         "projected_bank": projected_bank,
         "month_closed": month_closed,
     }
     return render(request, "zamestnanec_timesheet.html", context)
+
 
 
 @login_required
