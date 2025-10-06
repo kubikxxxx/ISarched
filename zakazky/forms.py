@@ -49,7 +49,7 @@ class ZakazkaForm(forms.ModelForm):
     predpokladany_cas = forms.IntegerField(label='Předpokládaný čas (h)', min_value=0)
     misto_stavby = forms.CharField(label='Místo stavby', widget=Textarea(attrs={'rows': 2}), strip=True)
     plna_moc = forms.BooleanField(label='Plná moc', required=False)
-    orientacni_naklady = forms.IntegerField(label='Orientační náklady')
+    orientacni_naklady = forms.IntegerField(label='Rozpočet na stavbu')
     sjednana_cena = forms.DecimalField(
         label='Sjednaná cena (Kč)',
         max_digits=18, decimal_places=2, min_value=0, required=False
