@@ -6,54 +6,23 @@
     <title>IS Arched</title>
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
     <style>
-        body {
-            height: 100vh;
-            overflow: hidden;
-        }
+        body { height: 100vh; overflow: hidden; }
+        .sidebar { height: 100vh; overflow-y: auto; }
+        .content-area { overflow-y: auto; height: 100vh; }
+        .list-group-item .btn { margin-left: 5px; }
+        .one-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; width: 100%; cursor: pointer; }
+        .description-toggle .full { white-space: normal; }
+        .d-none { display: none; }
+        .vykaz-popis { max-width: 400px; display: inline-block; vertical-align: bottom; }
+        .one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .sidebar {
-            height: 100vh;
-            overflow-y: auto;
+        /* Finance offcanvas – širší panel */
+        .offcanvas-fin {
+          --bs-offcanvas-width: 720px;
         }
-
-        .content-area {
-            overflow-y: auto;
-            height: 100vh;
-        }
-
-        .list-group-item .btn {
-            margin-left: 5px;
-        }
-
-        .one-line {
-            display: block;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 100%;
-            width: 100%;
-            cursor: pointer;
-        }
-
-        .description-toggle .full {
-            white-space: normal;
-        }
-
-        .d-none {
-            display: none;
-        }
-
-        .vykaz-popis {
-            max-width: 400px;
-            display: inline-block;
-            vertical-align: bottom;
-        }
-
-        .one-line {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .table-fin td, .table-fin th { vertical-align: middle; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .muted { color: #6c757d; }
     </style>
 </head>
 <body>
@@ -71,8 +40,7 @@
                 <form method="get" class="mb-3">
                     <input type="hidden" name="aktivni" value="{% if aktivni == '1' %}0{% else %}1{% endif %}">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" onclick="this.form.submit();"
-                               {% if aktivni == '1' %}checked{% endif %}>
+                        <input class="form-check-input" type="checkbox" onclick="this.form.submit();" {% if aktivni == '1' %}checked{% endif %}>
                         <label class="form-check-label">Jen aktivní zakázky</label>
                     </div>
                 </form>
@@ -87,18 +55,13 @@
                                 <span class="badge bg-secondary">Ukončena</span>
                             {% endif %}
                         </div>
-                        <div>{{ zakazka.zakazka_start|date:"d.m.Y" }} →
-                            {% if zakazka.zakazka_konec_predp %}
-                                {{ zakazka.zakazka_konec_predp|date:"d.m.Y" }}
-                            {% else %}
-                                ???
-                            {% endif %}
+                        <div>
+                            {{ zakazka.zakazka_start|date:"d.m.Y" }} →
+                            {% if zakazka.zakazka_konec_predp %}{{ zakazka.zakazka_konec_predp|date:"d.m.Y" }}{% else %}???{% endif %}
                         </div>
-                        <a href="?detail_zakazka={{ zakazka.id }}&aktivni={{ aktivni }}"
-                           class="btn btn-sm btn-primary">Detail</a>
+                        <a href="?detail_zakazka={{ zakazka.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-primary">Detail</a>
                         {% if is_admin %}
-                            <a href="?detail_zamestnanci={{ zakazka.id }}"
-                               class="btn btn-sm btn-secondary">Zaměstnanci</a>
+                            <a href="?detail_zamestnanci={{ zakazka.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-secondary">Zaměstnanci</a>
                         {% endif %}
                     </div>
                 {% endfor %}
@@ -113,8 +76,7 @@
             </div>
 
             {% if selected_zamestnanci_id and zakazka_zam %}
-                <a href="{% url 'prirazeni_view' zakazka_zam.id %}" class="btn btn-primary mb-3">Přidělit
-                    zaměstnance</a>
+                <a href="{% url 'prirazeni_view' zakazka_zam.id %}" class="btn btn-primary mb-3">Přidělit zaměstnance</a>
                 <h5>Přiřazení zaměstnanci</h5>
                 <ul class="list-group">
                     {% for item in prirazeni_vypocty %}
@@ -127,11 +89,9 @@
                                     Zbývá: <span class="text-{{ item.barva }}">{{ item.zbyva|hodiny_hhmm }} h</span>
                                 </small><br>
                                 <small class="text-muted">Zakázka je pro zaměstnance:
-                                    {% if item.vidi %}<span class="text-success fw-bold">VIDITELNÁ</span>{% else %}
-                                        <span class="text-danger fw-bold">SKRYTÁ</span>{% endif %}
+                                    {% if item.vidi %}<span class="text-success fw-bold">VIDITELNÁ</span>{% else %}<span class="text-danger fw-bold">SKRYTÁ</span>{% endif %}
                                 </small>
                             </div>
-
                             <div class="d-flex flex-column align-items-end">
                                 {% if item.datum_ok %}
                                     <form method="post" action="{% url 'toggle_viditelnost' item.prirazeni.id %}">
@@ -142,8 +102,7 @@
                                     </form>
                                 {% endif %}
                                 {% if is_admin %}
-                                    <a href="{% url 'upravit_prirazeni' item.prirazeni.id %}"
-                                       class="btn btn-sm btn-outline-primary">Upravit</a>
+                                    <a href="{% url 'upravit_prirazeni' item.prirazeni.id %}" class="btn btn-sm btn-outline-primary">Upravit</a>
                                 {% endif %}
                             </div>
                         </li>
@@ -154,11 +113,14 @@
 
             {% elif zakazka_detail %}
                 {% if is_admin %}
-                    <div class="mb-3">
-                        <a href="{% url 'edit_zakazka' zakazka_detail.id %}" class="btn btn-warning me-2">Upravit</a>
+                    <div class="mb-3 d-flex flex-wrap gap-2">
+                        <a href="{% url 'edit_zakazka' zakazka_detail.id %}" class="btn btn-warning">Upravit</a>
                         <a href="{% url 'zakazka_subdodavky' zakazka_detail.id %}" class="btn btn-info">Subdodávky</a>
-                        <p><strong>Subdodávky: Arched ({{ arched_subs_count }}) {{ arched_subs_sum|format_cislo }}
-                            Kč</strong></p>
+                        <!-- FINANCE TRIGGER -->
+                        <button class="btn btn-outline-dark" type="button" data-bs-toggle="offcanvas" data-bs-target="#finOffcanvas" aria-controls="finOffcanvas">
+                            💰 Finance
+                        </button>
+                        <p class="mb-0 ms-auto"><strong>Subdodávky: Arched ({{ arched_subs_count }}) {{ arched_subs_sum|format_cislo }} Kč</strong></p>
                     </div>
                 {% endif %}
 
@@ -168,61 +130,27 @@
                             <div class="col-md-5">
                                 <h5>Detail zakázky</h5>
                                 <table class="table table-sm">
-                                    <tr>
-                                        <th>Číslo</th>
-                                        <td>{{ zakazka_detail.zakazka_cislo }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Název</th>
-                                        <td>{{ zakazka_detail.nazev }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Termín</th>
-                                        <td>{{ zakazka_detail.zakazka_konec_predp|date:"j. F Y" }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Místo stavby</th>
-                                        <td>{{ zakazka_detail.misto_stavby }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Plná moc</th>
-                                        <td>{{ zakazka_detail.plna_moc|yesno:"Ano,Ne" }}</td>
-                                    </tr>
+                                    <tr><th>Číslo</th><td>{{ zakazka_detail.zakazka_cislo }}</td></tr>
+                                    <tr><th>Název</th><td>{{ zakazka_detail.nazev }}</td></tr>
+                                    <tr><th>Termín</th><td>{{ zakazka_detail.zakazka_konec_predp|date:"j. F Y" }}</td></tr>
+                                    <tr><th>Místo stavby</th><td>{{ zakazka_detail.misto_stavby }}</td></tr>
+                                    <tr><th>Plná moc</th><td>{{ zakazka_detail.plna_moc|yesno:"Ano,Ne" }}</td></tr>
                                     {% if is_admin %}
-                                        <tr>
-                                            <th>Předpokládané náklady</th>
-                                            <td>{{ zakazka_detail.orientacni_naklady|format_cislo }} kč</td>
-                                        </tr>
+                                        <tr><th>Předpokládané náklady</th><td>{{ zakazka_detail.orientacni_naklady|format_cislo }} kč</td></tr>
                                         <tr>
                                             <th>Výnosy (sazba × hodiny)</th>
-                                            <td>
-                                                {% if rev_actual is not None and rev_plan is not None %}
-                                                    {{ rev_actual|format_cislo }} Kč <span class="text-muted">z</span>
-                                                    {{ rev_plan|format_cislo }} Kč
-                                                {% else %}–{% endif %}
-                                            </td>
+                                            <td>{% if rev_actual is not None and rev_plan is not None %}{{ rev_actual|format_cislo }} Kč <span class="text-muted">z</span> {{ rev_plan|format_cislo }} Kč{% else %}–{% endif %}</td>
                                         </tr>
                                         <tr>
                                             <th>Sjednaná cena</th>
-                                            <td>
-                                                {% if zakazka_detail.sjednana_cena is not None %}
-                                                    {{ zakazka_detail.sjednana_cena|format_cislo }} Kč
-                                                {% else %}–{% endif %}
-                                            </td>
+                                            <td>{% if zakazka_detail.sjednana_cena is not None %}{{ zakazka_detail.sjednana_cena|format_cislo }} Kč{% else %}–{% endif %}</td>
                                         </tr>
                                         <tr>
                                             <th>Záloha</th>
-                                            <td>
-                                                {% if zakazka_detail.zaloha is not None %}
-                                                    {{ zakazka_detail.zaloha|format_cislo }} Kč
-                                                {% else %}–{% endif %}
-                                            </td>
+                                            <td>{% if zakazka_detail.zaloha is not None %}{{ zakazka_detail.zaloha|format_cislo }} Kč{% else %}–{% endif %}</td>
                                         </tr>
                                     {% endif %}
-                                    <tr>
-                                    <th>Zadání</th>
-                                        <td>{{ zakazka_detail.popis_zadani }}</td>
-                                    </tr>
+                                    <tr><th>Zadání</th><td>{{ zakazka_detail.popis_zadani }}</td></tr>
                                     <tr>
                                         <th>Rozsah práce</th>
                                         <td>
@@ -230,15 +158,10 @@
                                                 <ul class="mb-0 ps-3">
                                                     {% for r in rozsahy_prace %}
                                                         <li class="d-flex justify-content-between align-items-center">
-                                                            {% if r.splneno %}
-                                                                <span style="color: green">-{{ r.text.text }}</span>{% else %}
-                                                                <span>-{{ r.text.text }}</span>{% endif %}
-                                                            <form method="post"
-                                                                  action="{% url 'toggle_rozsah_splneno' r.id %}"
-                                                                  style="margin: 0;">
+                                                            {% if r.splneno %}<span style="color: green">-{{ r.text.text }}</span>{% else %}<span>-{{ r.text.text }}</span>{% endif %}
+                                                            <form method="post" action="{% url 'toggle_rozsah_splneno' r.id %}" style="margin: 0;">
                                                                 {% csrf_token %}
-                                                                <button type="submit" class="btn btn-sm">
-                                                                    {% if r.splneno %}✅{% else %}⬜{% endif %}</button>
+                                                                <button type="submit" class="btn btn-sm">{% if r.splneno %}✅{% else %}⬜{% endif %}</button>
                                                             </form>
                                                         </li>
                                                     {% endfor %}
@@ -248,31 +171,25 @@
                                     </tr>
                                 </table>
                                 {% if is_admin %}
-                                    <a href="{% url 'zakazka_rozsahy' zakazka_detail.id %}"
-                                       class="btn btn-outline-primary btn-sm mt-2">Upravit rozsahy práce</a>
+                                    <a href="{% url 'zakazka_rozsahy' zakazka_detail.id %}" class="btn btn-outline-primary btn-sm mt-2">Upravit rozsahy práce</a>
                                 {% endif %}
 
                                 <h5>Úřední zápisy</h5>
                                 <ul class="list-group mb-2">
                                     {% for zapis in uredni_zapisy %}
                                         <li class="list-group-item">
-                                            {{ zapis.datum|date:"d.m.Y" }} → {{ zapis.termin_do|date:"d.m.Y" }}
-                                            – {{ zapis.popis|truncatechars:50 }}
-                                            {% if zapis.splneno %}
-                                                <span class="badge bg-success ms-2">splněno</span>{% endif %}
+                                            {{ zapis.datum|date:"d.m.Y" }} → {{ zapis.termin_do|date:"d.m.Y" }} – {{ zapis.popis|truncatechars:50 }}
+                                            {% if zapis.splneno %}<span class="badge bg-success ms-2">splněno</span>{% endif %}
                                             {% if is_admin and zapis.history.count > 1 %}
-                                                <a href="{% url 'zapis_historie' zapis.id %}"
-                                                   class="btn btn-sm btn-outline-secondary">Historie</a>
+                                                <a href="{% url 'zapis_historie' zapis.id %}" class="btn btn-sm btn-outline-secondary">Historie</a>
                                             {% endif %}
-                                            <a href="{% url 'uredni_zapis_edit' zapis.id %}"
-                                               class="btn btn-sm btn-outline-primary float-end">Upravit</a>
+                                            <a href="{% url 'uredni_zapis_edit' zapis.id %}" class="btn btn-sm btn-outline-primary float-end">Upravit</a>
                                         </li>
                                     {% empty %}
                                         <li class="list-group-item">Žádné úřední zápisy.</li>
                                     {% endfor %}
                                 </ul>
-                                <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}"
-                                   class="btn btn-outline-success">+ Přidat úřední zápis</a>
+                                <a href="{% url 'uredni_zapis_create' zakazka_detail.id %}" class="btn btn-outline-success">+ Přidat úřední zápis</a>
                             </div>
 
                             <div class="col-md-7">
@@ -281,24 +198,17 @@
                                     {% if is_admin %}
                                         Přiděleno celkem: <strong>{{ predpokladany_cas|hodiny_hhmm }} h</strong>,
                                         Odpracováno: <strong>{{ odpracovano_hodin|hodiny_hhmm }} h</strong>,
-                                        Zbývá:
-                                        <strong class="text-{{ barva_zbyva }}">{{ zbyva_hodin|hodiny_hhmm }} h</strong>
+                                        Zbývá: <strong class="text-{{ barva_zbyva }}">{{ zbyva_hodin|hodiny_hhmm }} h</strong>
                                     {% else %}
                                         Přiděleno: {{ predpokladany_cas|hodiny_hhmm }} h,
                                         Odpracováno: {{ odpracovano_hodin|hodiny_hhmm }} h,
-                                        Zbývá:
-                                        <span class="text-{{ barva_zbyva }}">{{ zbyva_hodin|hodiny_hhmm }} h</span>
+                                        Zbývá: <span class="text-{{ barva_zbyva }}">{{ zbyva_hodin|hodiny_hhmm }} h</span>
                                     {% endif %}
                                 </p>
 
                                 <!-- PROGRESS BAR -->
                                 <div class="progress mb-3" style="height: 25px;">
-                                    <div class="progress-bar bg-{{ barva_zbyva }}"
-                                         role="progressbar"
-                                         style="width: {{ progress_percent|floatformat:0 }}%;"
-                                         aria-valuenow="{{ odpracovano_hodin }}"
-                                         aria-valuemin="0"
-                                         aria-valuemax="100">
+                                    <div class="progress-bar bg-{{ barva_zbyva }}" role="progressbar" style="width: {{ progress_percent|floatformat:0 }}%;" aria-valuenow="{{ odpracovano_hodin }}" aria-valuemin="0" aria-valuemax="100">
                                         {{ odpracovano_hodin|hodiny_hhmm }}
                                     </div>
                                 </div>
@@ -307,19 +217,12 @@
                                 {% if is_admin %}
                                     <form method="get" class="mb-2">
                                         <input type="hidden" name="detail_zakazka" value="{{ zakazka_detail.id }}">
-                                        {% if aktivni == '1' %}
-                                            <input type="hidden" name="aktivni" value="1">
-                                        {% endif %}
-                                        <label for="zamestnanecFilter" class="form-label">Filtrovat podle
-                                            zaměstnance:</label>
-                                        <select name="vykazy_zamestnanec" id="zamestnanecFilter" class="form-select"
-                                                onchange="this.form.submit()">
+                                        <input type="hidden" name="aktivni" value="{{ aktivni }}">
+                                        <label for="zamestnanecFilter" class="form-label">Filtrovat podle zaměstnance:</label>
+                                        <select name="vykazy_zamestnanec" id="zamestnanecFilter" class="form-select" onchange="this.form.submit()">
                                             <option value="">– všichni –</option>
                                             {% for id, jmeno, prijmeni in zamestnanci_v_zakazce %}
-                                                <option value="{{ id }}"
-                                                        {% if vykazy_zamestnanec == id|stringformat:'s' %}selected{% endif %}>
-                                                    {{ jmeno }} {{ prijmeni }}
-                                                </option>
+                                                <option value="{{ id }}" {% if vykazy_zamestnanec == id|stringformat:'s' %}selected{% endif %}>{{ jmeno }} {{ prijmeni }}</option>
                                             {% endfor %}
                                         </select>
                                     </form>
@@ -331,7 +234,6 @@
                                         {% if is_admin or z.zamestnanec.id == request.user.id %}
                                             <li class="list-group-item" onclick="toggleFullText(this)">
                                                 <div class="d-flex align-items-start">
-                                                    <!-- LEVÁ část (texty) -->
                                                     <div class="flex-grow-1 me-2">
                                                         <strong class="me-2">{{ z.den_prace|date:"d.m.Y" }}</strong>
                                                         <span class="me-2">– {{ z.zamestnanec.jmeno }} {{ z.zamestnanec.prijmeni }}</span>
@@ -341,17 +243,11 @@
                                                         <span class="vykaz-popis short one-line">{{ z.popis }}</span>
                                                         <span class="vykaz-popis full d-none">{{ z.popis }}</span>
                                                     </div>
-
-                                                    <!-- PRAVÁ část (tlačítka) -->
                                                     <div class="ms-auto d-flex gap-2">
                                                         {% if is_admin and z.history.count > 1 %}
-                                                            <a href="{% url 'vykaz_historie' z.id %}"
-                                                               class="btn btn-sm btn-outline-secondary"
-                                                               onclick="event.stopPropagation()">Historie</a>
+                                                            <a href="{% url 'vykaz_historie' z.id %}" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">Historie</a>
                                                         {% endif %}
-                                                        <a href="{% url 'vykaz_edit' z.id %}"
-                                                           class="btn btn-sm btn-outline-primary"
-                                                           onclick="event.stopPropagation()">Upravit</a>
+                                                        <a href="{% url 'vykaz_edit' z.id %}" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation()">Upravit</a>
                                                     </div>
                                                 </div>
                                             </li>
@@ -361,44 +257,112 @@
                                     {% endfor %}
                                 </ul>
 
-
-                                <a href="{% url 'vykaz_create' zakazka_detail.id %}"
-                                   class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
+                                <a href="{% url 'vykaz_create' zakazka_detail.id %}" class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {% if is_admin %}
+                <!-- OFFCANVAS: FINANCE -->
+                <div class="offcanvas offcanvas-end offcanvas-fin" tabindex="-1" id="finOffcanvas" aria-labelledby="finOffcanvasLabel">
+                  <div class="offcanvas-header">
+                    <h5 class="offcanvas-title" id="finOffcanvasLabel">💰 Finance – {{ zakazka_detail.zakazka_cislo }} – {{ zakazka_detail.nazev }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                  </div>
+                  <div class="offcanvas-body">
+                    {% if project_finance %}
+                      <div class="mb-4">
+                        <h6 class="text-uppercase text-muted">Předpoklad</h6>
+                        <table class="table table-sm table-fin">
+                          <tr><th>Čas</th><td class="num">{{ project_finance.predp_cas|hodiny_hhmm }} h</td></tr>
+                          <tr><th>Sazba</th><td class="num">{{ project_finance.sazba|format_cislo }} Kč/h</td></tr>
+                          <tr><th>Předpokládaný výnos</th><td class="num">{{ project_finance.predp_vynos|format_cislo }} Kč</td></tr>
+                          {% if project_finance.orient_nakl_hod %}
+                          <tr><th>Orientační náklad (hod)</th><td class="num">{{ project_finance.orient_nakl_hod|format_cislo }} Kč/h</td></tr>
+                          <tr><th>Předpokládaný náklad</th><td class="num">{{ project_finance.predp_naklad|format_cislo }} Kč</td></tr>
+                          <tr class="table-light"><th>Předpokládaný zisk</th><td class="num fw-semibold">{{ project_finance.predp_zisk|format_cislo }} Kč</td></tr>
+                          {% endif %}
+                        </table>
+                      </div>
+
+                      <div class="mb-4">
+                        <h6 class="text-uppercase text-muted">Skutečnost</h6>
+                        <table class="table table-sm table-fin">
+                          <tr><th>Sjednaná cena</th><td class="num">{% if project_finance.sjednana_cena is not None %}{{ project_finance.sjednana_cena|format_cislo }} Kč{% else %}–{% endif %}</td></tr>
+                          <tr><th>Subdodávky (Arched)</th><td class="num">{{ project_finance.subdodavky_arched|format_cislo }} Kč</td></tr>
+                          <tr><th>Hrubý výnos (sjednané − subdodávky)</th><td class="num">{{ project_finance.hruby_vynos|format_cislo }} Kč</td></tr>
+                          <tr><th>Odpracované hodiny celkem</th><td class="num">{{ project_finance.skut_hodin|hodiny_hhmm }} h</td></tr>
+                          <tr><th>Skutečná hodinová sazba</th><td class="num">{% if project_finance.skut_hod_sazba is not None %}{{ project_finance.skut_hod_sazba|format_cislo }} Kč/h{% else %}–{% endif %}</td></tr>
+                          <tr><th>Cestovné celkem</th><td class="num">{{ project_finance.cestovne_celkem|format_cislo }} Kč</td></tr>
+                          <tr><th>Náklady práce celkem</th><td class="num">{{ project_finance.naklady_prace_celkem|format_cislo }} Kč</td></tr>
+                          {% if project_finance.rezie_celkem is not None %}
+                            <tr><th>Režie</th><td class="num">{{ project_finance.rezie_celkem|format_cislo }} Kč</td></tr>
+                          {% endif %}
+                          <tr class="table-light"><th>Celkové náklady</th><td class="num fw-semibold">{{ project_finance.naklady_celkem|format_cislo }} Kč</td></tr>
+                          <tr class="table-success"><th>Skutečný zisk</th><td class="num fw-bold">{{ project_finance.skut_zisk|format_cislo }} Kč</td></tr>
+                        </table>
+                      </div>
+
+                      {% if project_finance.per_emp %}
+                      <div>
+                        <h6 class="text-uppercase text-muted">Rozpad dle osob</h6>
+                        <table class="table table-sm table-striped align-middle">
+                          <thead>
+                            <tr>
+                              <th>Osoba</th>
+                              <th class="num">Hodiny</th>
+                              <th class="num">Cestovné</th>
+                              <th class="num">Náklad/hod</th>
+                              <th class="num">Náklad celkem</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {% for r in project_finance.per_emp %}
+                              <tr>
+                                <td>{{ r.emp }}</td>
+                                <td class="num">{{ r.hod|hodiny_hhmm }} h</td>
+                                <td class="num">{{ r.cestovne|format_cislo }} Kč</td>
+                                <td class="num">{{ r.naklad_hod|format_cislo }} Kč</td>
+                                <td class="num fw-semibold">{{ r.celkem|format_cislo }} Kč</td>
+                              </tr>
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                      </div>
+                      {% endif %}
+                    {% else %}
+                      <!-- Fallback, když detailnější výpočty zatím neposíláš v contextu -->
+                      <div class="alert alert-info">
+                        Podrobná finanční rekapitulace zatím není k dispozici (project_finance). Zobrazuji dostupné údaje.
+                      </div>
+                      <table class="table table-sm table-fin">
+                        <tr><th>Sjednaná cena</th><td class="num">{% if zakazka_detail.sjednana_cena %}{{ zakazka_detail.sjednana_cena|format_cislo }} Kč{% else %}–{% endif %}</td></tr>
+                        <tr><th>Záloha</th><td class="num">{% if zakazka_detail.zaloha %}{{ zakazka_detail.zaloha|format_cislo }} Kč{% else %}–{% endif %}</td></tr>
+                        <tr><th>Subdodávky (Arched)</th><td class="num">{{ arched_subs_sum|format_cislo }} Kč</td></tr>
+                        <tr><th>Výnosy (skutečnost)</th><td class="num">{% if rev_actual is not None %}{{ rev_actual|format_cislo }} Kč{% else %}–{% endif %}</td></tr>
+                        <tr><th>Výnosy (plán)</th><td class="num">{% if rev_plan is not None %}{{ rev_plan|format_cislo }} Kč{% else %}–{% endif %}</td></tr>
+                      </table>
+                      <p class="muted mb-0">Tip: do kontextu pošli <code>project_finance</code> s klíči jako <code>predp_cas</code>, <code>sazba</code>, <code>predp_vynos</code>, <code>predp_zisk</code>, <code>sjednana_cena</code>, <code>subdodavky_arched</code>, <code>hruby_vynos</code>, <code>skut_hodin</code>, <code>skut_hod_sazba</code>, <code>cestovne_celkem</code>, <code>naklady_prace_celkem</code>, <code>rezie_celkem</code>, <code>naklady_celkem</code>, <code>skut_zisk</code>, a <code>per_emp</code> (list).</p>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endif %}
             {% elif klient_detail %}
                 <h5>Detail klienta</h5>
                 <table class="table table-sm">
-                    <tr>
-                        <th>Název</th>
-                        <td>{{ klient_detail.nazev }}</td>
-                    </tr>
-                    <tr>
-                        <th>IČO</th>
-                        <td>{{ klient_detail.ico }}</td>
-                    </tr>
-                    <tr>
-                        <th>Email</th>
-                        <td>{{ klient_detail.email }}</td>
-                    </tr>
-                    <tr>
-                        <th>Telefon</th>
-                        <td>{{ klient_detail.telefon }}</td>
-                    </tr>
-                    <tr>
-                        <th>Adresa</th>
-                        <td>{{ klient_detail.sidlo_ulice }}, {{ klient_detail.sidlo_mesto }} {{ klient_detail.sidlo_psc }}</td>
-                    </tr>
+                    <tr><th>Název</th><td>{{ klient_detail.nazev }}</td></tr>
+                    <tr><th>IČO</th><td>{{ klient_detail.ico }}</td></tr>
+                    <tr><th>Email</th><td>{{ klient_detail.email }}</td></tr>
+                    <tr><th>Telefon</th><td>{{ klient_detail.telefon }}</td></tr>
+                    <tr><th>Adresa</th><td>{{ klient_detail.sidlo_ulice }}, {{ klient_detail.sidlo_mesto }} {{ klient_detail.sidlo_psc }}</td></tr>
                 </table>
 
                 <h6>Poznámky:</h6>
                 {% if klient_poznamky %}
                     <ul class="list-group">
                         {% for p in klient_poznamky %}
-                            <li class="list-group-item"><strong>{{ p.datum|date:"d.m.Y H:i" }}:</strong> {{ p.text }}
-                            </li>
+                            <li class="list-group-item"><strong>{{ p.datum|date:"d.m.Y H:i" }}:</strong> {{ p.text }}</li>
                         {% endfor %}
                     </ul>
                 {% else %}
@@ -407,64 +371,33 @@
 
                 {% if is_admin %}
                     <div class="mt-3">
-                        <a href="{% url 'client_edit' klient_detail.id %}" class="btn btn-outline-warning me-2">Upravit
-                            klienta</a>
-                        <a href="{% url 'client_add_note' klient_detail.id %}" class="btn btn-outline-primary">Přidat
-                            poznámku</a>
+                        <a href="{% url 'client_edit' klient_detail.id %}" class="btn btn-outline-warning me-2">Upravit klienta</a>
+                        <a href="{% url 'client_add_note' klient_detail.id %}" class="btn btn-outline-primary">Přidat poznámku</a>
                     </div>
                 {% endif %}
 
             {% elif zamestnanec_sidebar %}
                 <h5>Detail zaměstnance</h5>
                 {% if zamestnanec_sidebar.id %}
-                    <a class="btn btn-outline-primary btn-sm"
-                       href="{% url 'zamestnanec_timesheet' zamestnanec_sidebar.id %}?ym={% now "Y-m" %}">
-                        📅 Timesheet
-                    </a>
+                    <a class="btn btn-outline-primary btn-sm" href="{% url 'zamestnanec_timesheet' zamestnanec_sidebar.id %}?ym={% now 'Y-m' %}">📅 Timesheet</a>
                 {% endif %}
                 <table class="table table-sm">
-                    <tr>
-                        <th>Uživatelské jméno</th>
-                        <td>{{ zamestnanec_sidebar.username }}</td>
-                    </tr>
-                    <tr>
-                        <th>Jméno a příjmení</th>
-                        <td>{{ zamestnanec_sidebar.jmeno }} {{ zamestnanec_sidebar.prijmeni }}</td>
-                    </tr>
-                    <tr>
-                        <th>Titul</th>
-                        <td>{{ zamestnanec_sidebar.titul|default:"–" }}</td>
-                    </tr>
+                    <tr><th>Uživatelské jméno</th><td>{{ zamestnanec_sidebar.username }}</td></tr>
+                    <tr><th>Jméno a příjmení</th><td>{{ zamestnanec_sidebar.jmeno }} {{ zamestnanec_sidebar.prijmeni }}</td></tr>
+                    <tr><th>Titul</th><td>{{ zamestnanec_sidebar.titul|default:"–" }}</td></tr>
                     {% if is_admin %}
-                        <tr>
-                            <th>Datum nástupu</th>
-                            <td>{{ zamestnanec_sidebar.datum_nastup|date:"d.m.Y" }}</td>
-                        </tr>
-                        <tr>
-                            <th>Sazba za hodinu</th>
-                            <td>{{ zamestnanec_sidebar.sazba_hod }} Kč</td>
-                        </tr>
-                        <tr>
-                            <th>Sazba za km</th>
-                            <td>{{ zamestnanec_sidebar.sazba_km|default:"–" }} Kč</td>
-                        </tr>
-                        <tr>
-                            <th>Aktivní</th>
-                            <td>{{ zamestnanec_sidebar.is_active|yesno:"Ano,Ne" }}</td>
-                        </tr>
-                        <tr>
-                            <th>Administrátor</th>
-                            <td>{{ zamestnanec_sidebar.is_admin|yesno:"Ano,Ne" }}</td>
-                        </tr>
+                        <tr><th>Datum nástupu</th><td>{{ zamestnanec_sidebar.datum_nastup|date:"d.m.Y" }}</td></tr>
+                        <tr><th>Sazba za hodinu</th><td>{{ zamestnanec_sidebar.sazba_hod }} Kč</td></tr>
+                        <tr><th>Sazba za km</th><td>{{ zamestnanec_sidebar.sazba_km|default:"–" }} Kč</td></tr>
+                        <tr><th>Aktivní</th><td>{{ zamestnanec_sidebar.is_active|yesno:"Ano,Ne" }}</td></tr>
+                        <tr><th>Administrátor</th><td>{{ zamestnanec_sidebar.is_admin|yesno:"Ano,Ne" }}</td></tr>
                     {% endif %}
                 </table>
 
                 {% if is_admin %}
                     <div class="d-flex gap-2">
-                        <a href="{% url 'employee_edit' zamestnanec_sidebar.id %}" class="btn btn-primary">Upravit
-                            zaměstnance</a>
-                        <a href="{% url 'employee_weekly_plan' zamestnanec_sidebar.id %}" class="btn btn-warning">✎
-                            Trvalý týdenní plán</a>
+                        <a href="{% url 'employee_edit' zamestnanec_sidebar.id %}" class="btn btn-primary">Upravit zaměstnance</a>
+                        <a href="{% url 'employee_weekly_plan' zamestnanec_sidebar.id %}" class="btn btn-warning">✎ Trvalý týdenní plán</a>
                     </div>
                 {% endif %}
 
@@ -475,31 +408,18 @@
                         <th>Jméno</th>
                         <td>{{ subdodavatel_sidebar.titul_pred }} {{ subdodavatel_sidebar.jmeno }} {{ subdodavatel_sidebar.prijmeni }} {{ subdodavatel_sidebar.titul_za }}</td>
                     </tr>
-                    <tr>
-                        <th>Email</th>
-                        <td>{{ subdodavatel_sidebar.email }}</td>
-                    </tr>
-                    <tr>
-                        <th>Telefon</th>
-                        <td>{{ subdodavatel_sidebar.telefon }}</td>
-                    </tr>
+                    <tr><th>Email</th><td>{{ subdodavatel_sidebar.email }}</td></tr>
+                    <tr><th>Telefon</th><td>{{ subdodavatel_sidebar.telefon }}</td></tr>
                 </table>
                 {% if is_admin %}
-                    <a href="{% url 'edit_subdodavatel' subdodavatel_sidebar.id %}" class="btn btn-sm btn-primary mb-2">Upravit
-                        subdodavatele</a>
+                    <a href="{% url 'edit_subdodavatel' subdodavatel_sidebar.id %}" class="btn btn-sm btn-primary mb-2">Upravit subdodavatele</a>
                 {% endif %}
 
             {% elif subdodavka_sidebar %}
                 <h5>Detail subdodávky</h5>
                 <table class="table table-sm">
-                    <tr>
-                        <th>Název</th>
-                        <td>{{ subdodavka_sidebar.nazev }}</td>
-                    </tr>
-                    <tr>
-                        <th>Aktivní</th>
-                        <td>{{ subdodavka_sidebar.aktivni|yesno:"Ano,Ne" }}</td>
-                    </tr>
+                    <tr><th>Název</th><td>{{ subdodavka_sidebar.nazev }}</td></tr>
+                    <tr><th>Aktivní</th><td>{{ subdodavka_sidebar.aktivni|yesno:"Ano,Ne" }}</td></tr>
                 </table>
                 {% if is_admin %}
                     <a href="{% url 'edit_subdodavka' subdodavka_sidebar.id %}" class="btn btn-sm btn-primary mb-2">Upravit</a>
@@ -515,8 +435,7 @@
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingKlienti">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                                data-bs-target="#collapseKlienti">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseKlienti">
                             Klienti
                         </button>
                     </h2>
@@ -526,13 +445,12 @@
                                 {% for k in klienti %}
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                         {{ k.nazev }}
-                                        <a href="?detail_klient={{ k.id }}" class="btn btn-sm btn-secondary">Detail</a>
+                                        <a href="?detail_klient={{ k.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-secondary">Detail</a>
                                     </li>
                                 {% endfor %}
                             </ul>
                             {% if is_admin %}
-                                <a href="{% url 'client_create' %}" class="btn btn-outline-primary w-100 mb-3">+ Přidat
-                                    klienta</a>
+                                <a href="{% url 'client_create' %}" class="btn btn-outline-primary w-100 mb-3">+ Přidat klienta</a>
                             {% endif %}
                         </div>
                     </div>
@@ -540,25 +458,22 @@
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingSubdodavatele">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                                data-bs-target="#collapseSubdodavatele">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSubdodavatele">
                             Subdodavatelé
                         </button>
                     </h2>
-                    <div id="collapseSubdodavatele" class="accordion-collapse collapse"
-                         data-bs-parent="#sidebarAccordion">
+                    <div id="collapseSubdodavatele" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                         <div class="accordion-body p-0">
                             <ul class="list-group mb-3">
                                 {% for sd in subdodavatele %}
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                         {{ sd.jmeno }} {{ sd.prijmeni }}
-                                        <a href="?detail_subdodavatel={{ sd.id }}" class="btn btn-sm btn-secondary">Detail</a>
+                                        <a href="?detail_subdodavatel={{ sd.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-secondary">Detail</a>
                                     </li>
                                 {% endfor %}
                             </ul>
                             {% if is_admin %}
-                                <a href="{% url 'create_subdodavatel' %}" class="btn btn-outline-primary w-100 mb-3">+
-                                    Přidat subdodavatele</a>
+                                <a href="{% url 'create_subdodavatel' %}" class="btn btn-outline-primary w-100 mb-3">+ Přidat subdodavatele</a>
                             {% endif %}
                         </div>
                     </div>
@@ -567,24 +482,21 @@
                 {% if is_admin %}
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="headingSubdodavky">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                                    data-bs-target="#collapseSubdodavky">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSubdodavky">
                                 Subdodávky
                             </button>
                         </h2>
-                        <div id="collapseSubdodavky" class="accordion-collapse collapse"
-                             data-bs-parent="#sidebarAccordion">
+                        <div id="collapseSubdodavky" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                             <div class="accordion-body p-0">
                                 <ul class="list-group mb-3">
                                     {% for s in subdodavky %}
                                         <li class="list-group-item d-flex justify-content-between align-items-center">
                                             {{ s.nazev }}
-                                            <a href="?detail_subdodavka={{ s.id }}" class="btn btn-sm btn-secondary">Detail</a>
+                                            <a href="?detail_subdodavka={{ s.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-secondary">Detail</a>
                                         </li>
                                     {% endfor %}
                                 </ul>
-                                <a href="{% url 'create_subdodavka' %}" class="btn btn-outline-primary w-100">+ Přidat
-                                    subdodávku</a>
+                                <a href="{% url 'create_subdodavka' %}" class="btn btn-outline-primary w-100">+ Přidat subdodávku</a>
                             </div>
                         </div>
                     </div>
@@ -593,24 +505,21 @@
                 {% if is_admin %}
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="headingZamestnanci">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                                    data-bs-target="#collapseZamestnanci">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseZamestnanci">
                                 Zaměstnanci
                             </button>
                         </h2>
-                        <div id="collapseZamestnanci" class="accordion-collapse collapse"
-                             data-bs-parent="#sidebarAccordion">
+                        <div id="collapseZamestnanci" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                             <div class="accordion-body p-0">
                                 <ul class="list-group mb-3">
                                     {% for z in zamestnanci %}
                                         <li class="list-group-item d-flex justify-content-between align-items-center">
                                             {{ z.jmeno }} {{ z.prijmeni }}
-                                            <a href="?detail_zamestnanec={{ z.id }}" class="btn btn-sm btn-secondary">Detail</a>
+                                            <a href="?detail_zamestnanec={{ z.id }}&aktivni={{ aktivni }}" class="btn btn-sm btn-secondary">Detail</a>
                                         </li>
                                     {% endfor %}
                                 </ul>
-                                <a href="{% url 'employee_create' %}" class="btn btn-outline-primary w-100 mb-3">+
-                                    Přidat zaměstnance</a>
+                                <a href="{% url 'employee_create' %}" class="btn btn-outline-primary w-100 mb-3">+ Přidat zaměstnance</a>
                             </div>
                         </div>
                     </div>
@@ -619,8 +528,7 @@
 
             {% if not is_admin %}
                 <div class="mt-3">
-                    <a href="{% url 'zamestnanec_timesheet' request.user.id %}?ym={% now 'Y-m' %}"
-                       class="btn btn-outline-primary w-100">
+                    <a href="{% url 'zamestnanec_timesheet' request.user.id %}?ym={% now 'Y-m' %}" class="btn btn-outline-primary w-100">
                         📅 Timesheet
                     </a>
                 </div>
@@ -640,35 +548,24 @@
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 <script>
     (function () {
-  const el = document.getElementById('leftSidebar');
-  if (!el) return;
-
-  const KEY_SCROLL = 'leftSidebarScrollTop';
-
-  // Obnovení pozice
-  const saved = localStorage.getItem(KEY_SCROLL);
-  if (saved !== null) {
-    const y = parseInt(saved, 10);
-    if (!Number.isNaN(y)) el.scrollTop = y;
-  }
-
-  // Uložení pozice
-  function saveScroll() {
-    try { localStorage.setItem(KEY_SCROLL, String(el.scrollTop)); } catch (e) {}
-  }
-
-  // Před navigací (klik na odkaz/tlačítko)
-  document.addEventListener('click', function (e) {
-    const aOrBtn = e.target.closest('a, button, input[type="submit"]');
-    if (aOrBtn) saveScroll();
-  });
-
-  // Při odeslání libovolného formuláře
-  document.addEventListener('submit', function () { saveScroll(); }, true);
-
-  // Při zavření/refreshi
-  window.addEventListener('beforeunload', saveScroll);
-})();
+        const el = document.getElementById('leftSidebar');
+        if (!el) return;
+        const KEY_SCROLL = 'leftSidebarScrollTop';
+        const saved = localStorage.getItem(KEY_SCROLL);
+        if (saved !== null) {
+            const y = parseInt(saved, 10);
+            if (!Number.isNaN(y)) el.scrollTop = y;
+        }
+        function saveScroll() {
+            try { localStorage.setItem(KEY_SCROLL, String(el.scrollTop)); } catch (e) {}
+        }
+        document.addEventListener('click', function (e) {
+            const aOrBtn = e.target.closest('a, button, input[type="submit"]');
+            if (aOrBtn) saveScroll();
+        });
+        document.addEventListener('submit', function () { saveScroll(); }, true);
+        window.addEventListener('beforeunload', saveScroll);
+    })();
 </script>
 </body>
 </html>

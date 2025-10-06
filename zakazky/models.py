@@ -66,6 +66,9 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
         help_text="Měsíční mzda (Kč). Použije se pro zaměstnance."
     )
 
+    rezie_hod = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
+                                    help_text="Osobní režie pracovníka (Kč/h).")
+
     objects = ZamestnanecManager()
 
     USERNAME_FIELD = 'username'
@@ -191,6 +194,10 @@ class Zakazka(models.Model):
         decimal_places=2,
         null=True,      # ← nepovinné
         blank=True,     # ← nepovinné
+    )
+    orientacni_hodinove_naklady = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Hodinový náklad pro předpokládaný zisk."
     )
 
     class Meta:
@@ -334,6 +341,10 @@ class OverheadRate(models.Model):
     """
     valid_from = models.DateField(help_text="Platí od tohoto data (včetně).")
     rate_per_hour = models.DecimalField(max_digits=10, decimal_places=2, help_text="Kč za hodinu.")
+    divisor = models.DecimalField(
+        max_digits=6, decimal_places=2, default=1,
+        help_text="Celofiremní dělič režijní sazby (režie/worker = sazba / divisor)."
+    )
     note = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:

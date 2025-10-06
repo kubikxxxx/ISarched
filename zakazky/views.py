@@ -1,4 +1,6 @@
 # views.py
+from collections import defaultdict
+
 from django.apps import apps
 from django.db import transaction
 from django.forms import modelformset_factory
@@ -9,6 +11,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.forms import PasswordChangeForm
+from .helpers import _hours_between, overhead_worker_hour
 from django.http import HttpResponseForbidden, HttpResponse
 from django.contrib.auth import update_session_auth_hash
 from django.utils import timezone
@@ -35,7 +38,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 import calendar
 import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+from .helpers import planned_hours, overhead_rate_on, _hours_between
 from .models import UredniZapis, RozsahText, UzaverkaMesice, PlanDen, OverheadRate
 from .forms import LoginForm, ZakazkaForm, EmployeeForm, ClientForm, KlientPoznamkaForm, SubdodavkaForm, \
     SubdodavatelForm, UredniZapisForm, VykazForm, RozsahPraceFormSet, ZamestnanecZakazkaForm, CustomPasswordChangeForm, \
@@ -77,10 +81,19 @@ def logout_view(request):
     return redirect('login')
 
 
+def _fmt_hhmm_from_hours(h: Decimal) -> str:
+    # bezpečně i pro None
+    h = Decimal("0") if h is None else Decimal(str(h))
+    total_minutes = int((h * Decimal("60")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    hh = total_minutes // 60
+    mm = total_minutes % 60
+    return f"{hh:02d}:{mm:02d}"
+
+
 @login_required
 def homepage_view(request):
+    # --- levý sloupec: seznam zakázek ---------------------------------------
     aktivni = "1"
-
     if request.user.is_admin:
         aktivni = request.GET.get("aktivni", "1")
         zakazky = Zakazka.objects.all()
@@ -93,83 +106,82 @@ def homepage_view(request):
             prirazeni__skryta=False
         )
 
+    # --- pravý panel: výběry detailů -----------------------------------------
     selected_zamestnanec_id = request.GET.get("detail_zamestnanec")
-    zamestnanec_sidebar = Zamestnanec.objects.filter(
-        id=selected_zamestnanec_id).first() if selected_zamestnanec_id else None
+    zamestnanec_sidebar = Zamestnanec.objects.filter(id=selected_zamestnanec_id).first() if selected_zamestnanec_id else None
+
     selected_subdodavatel_id = request.GET.get("detail_subdodavatel")
-    subdodavatel_sidebar = Subdodavatel.objects.filter(
-        id=selected_subdodavatel_id).first() if selected_subdodavatel_id else None
+    subdodavatel_sidebar = Subdodavatel.objects.filter(id=selected_subdodavatel_id).first() if selected_subdodavatel_id else None
+
     selected_subdodavka_id = request.GET.get("detail_subdodavka")
-    subdodavka_sidebar = Subdodavka.objects.filter(
-        id=selected_subdodavka_id).first() if selected_subdodavka_id else None
+    subdodavka_sidebar = Subdodavka.objects.filter(id=selected_subdodavka_id).first() if selected_subdodavka_id else None
+
     selected_zamestnanci_id = request.GET.get("detail_zamestnanci")
     zakazka_zam = Zakazka.objects.filter(id=selected_zamestnanci_id).first() if selected_zamestnanci_id else None
     prirazeni = ZamestnanecZakazka.objects.filter(zakazka=zakazka_zam) if zakazka_zam else None
     zamestnanci_prirazeni = prirazeni.select_related('zamestnanec') if prirazeni else None
     prirazene_ids = zamestnanci_prirazeni.values_list('zamestnanec_id', flat=True) if zamestnanci_prirazeni else None
+
     zamestnanci = Zamestnanec.objects.all()
     klienti = Klient.objects.all()
     subdodavatele = Subdodavatel.objects.all()
     subdodavky = Subdodavka.objects.all()
+
     selected_zakazka_id = request.GET.get("detail_zakazka")
     zakazka_detail = Zakazka.objects.filter(id=selected_zakazka_id).first() if selected_zakazka_id else None
+
     selected_klient_id = request.GET.get("detail_klient")
     klient_detail = Klient.objects.filter(id=selected_klient_id).first() if selected_klient_id else None
-    klient_poznamky = KlientPoznamka.objects.filter(klient_id=selected_klient_id).order_by(
-        '-datum') if selected_klient_id else None
+    klient_poznamky = KlientPoznamka.objects.filter(klient_id=selected_klient_id).order_by('-datum') if selected_klient_id else None
+
     uredni_zapisy = UredniZapis.objects.filter(zakazka=zakazka_detail) if zakazka_detail else None
     rozsahy_prace = RozsahPrace.objects.filter(zakazka=zakazka_detail) if zakazka_detail else None
+
     zamestnanec_filter_id = request.GET.get("vykazy_zamestnanec")
     vykazy = None
-
     if zakazka_detail:
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
         if zamestnanec_filter_id:
             vykazy_qs = vykazy_qs.filter(zamestnanec_id=zamestnanec_filter_id)
         vykazy = vykazy_qs.select_related('zamestnanec').order_by('-den_prace')
 
+    # --- subdodávky fakturované Arched ---------------------------------------
     arched_subs_count = 0
-    arched_subs_sum = 0
+    arched_subs_sum = Decimal("0")
     if zakazka_detail:
-        arched_subs = ZakazkaSubdodavka.objects.filter(
-            zakazka=zakazka_detail,
-            fakturuje_arched=True
-        )
+        arched_subs = ZakazkaSubdodavka.objects.filter(zakazka=zakazka_detail, fakturuje_arched=True)
         arched_subs_count = arched_subs.count()
-        arched_subs_sum = arched_subs.aggregate(Sum('cena'))['cena__sum'] or 0
+        arched_subs_sum = arched_subs.aggregate(Sum('cena'))['cena__sum'] or Decimal("0")
 
-    odpracovano_hodin = 0
-    zbyva_hodin = 0
+    # --- progress bar hodin u zakázky ----------------------------------------
+    odpracovano_hodin = 0.0
+    zbyva_hodin = 0.0
     barva_zbyva = "success"
-    progress_percent = 0
-    predpokladany_cas = 0
+    progress_percent = 0.0
+    predpokladany_cas = 0.0
 
-    # 🔢 výpočet hodin pro progress (admin = všichni; user = jen jeho)
     if zakazka_detail:
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
 
         if request.user.is_admin:
             relevantni_vykazy = vykazy_qs
-            predpokladany_cas = zakazka_detail.predpokladany_cas or 0
+            predpokladany_cas = float(zakazka_detail.predpokladany_cas or 0)
         else:
             relevantni_vykazy = vykazy_qs.filter(zamestnanec=request.user)
-            predpokladany_cas = ZamestnanecZakazka.objects.filter(
-                zakazka=zakazka_detail,
-                zamestnanec=request.user
-            ).aggregate(Sum('prideleno_hodin'))['prideleno_hodin__sum'] or 0
+            predpokladany_cas = float(
+                ZamestnanecZakazka.objects.filter(zakazka=zakazka_detail, zamestnanec=request.user)
+                .aggregate(Sum('prideleno_hodin'))['prideleno_hodin__sum'] or 0
+            )
 
-        for vykaz in relevantni_vykazy:
-            if vykaz.cas_od and vykaz.cas_do:
-                dt_od = datetime.combine(datetime.today(), vykaz.cas_od)
-                dt_do = datetime.combine(datetime.today(), vykaz.cas_do)
-                rozdil = dt_do - dt_od
-                odpracovano_hodin += rozdil.total_seconds() / 3600
+        for v in relevantni_vykazy:
+            if v.cas_od and v.cas_do:
+                dt_od = datetime.combine(v.den_prace, v.cas_od)
+                dt_do = datetime.combine(v.den_prace, v.cas_do)
+                diff = dt_do - dt_od
+                odpracovano_hodin += max(diff.total_seconds() / 3600.0, 0.0)
 
         zbyva_hodin = predpokladany_cas - odpracovano_hodin
-        if predpokladany_cas > 0:
-            podil = zbyva_hodin / predpokladany_cas
-        else:
-            podil = 1
+        podil = (zbyva_hodin / predpokladany_cas) if predpokladany_cas > 0 else 1
 
         if podil <= 0:
             barva_zbyva = "danger"
@@ -179,25 +191,24 @@ def homepage_view(request):
             barva_zbyva = "success"
 
         if predpokladany_cas > 0:
-            progress_percent = min(100, round((odpracovano_hodin / predpokladany_cas) * 100, 1))
+            progress_percent = min(100.0, (odpracovano_hodin / predpokladany_cas) * 100.0)
 
-    # 💰 VÝNOSY PRO ADMINA: sazba zakázky × (odpracované hodiny NA ZAKÁZCE CELKEM) a × plán
+    # --- výnosy (sazba × hodiny) pro admina ----------------------------------
     proj_rate = None
     rev_actual = None
     rev_plan = None
     if request.user.is_admin and zakazka_detail and getattr(zakazka_detail, "sazba_id", None):
         try:
             rate = Decimal(str(zakazka_detail.sazba.hodnota))
-            # hodiny všech uživatelů na zakázce (ne podle filtru)
-            hours_all = 0.0
+            hours_all = Decimal("0")
             for v in zakazka_detail.zakazkazamestnanec_set.all():
                 if v.cas_od and v.cas_do:
-                    dt_od = datetime.combine(datetime.today(), v.cas_od)
-                    dt_do = datetime.combine(datetime.today(), v.cas_do)
-                    hours_all += max((dt_do - dt_od).total_seconds() / 3600, 0)
-
+                    dt_od = datetime.combine(v.den_prace, v.cas_od)
+                    dt_do = datetime.combine(v.den_prace, v.cas_do)
+                    secs = max((dt_do - dt_od).total_seconds(), 0.0)
+                    hours_all += Decimal(str(secs / 3600.0))
             proj_rate = rate
-            rev_actual = (rate * Decimal(str(hours_all))).quantize(Decimal("0.01"))
+            rev_actual = (rate * hours_all).quantize(Decimal("0.01"))
             plan_hours = Decimal(str(zakazka_detail.predpokladany_cas or 0))
             rev_plan = (rate * plan_hours).quantize(Decimal("0.01"))
         except Exception:
@@ -205,56 +216,76 @@ def homepage_view(request):
             rev_actual = None
             rev_plan = None
 
+    # --- historie (pokud používáš simple_history) ----------------------------
     historie_urednich_zaznamu = None
     historie_vykazu_prace = None
     if zakazka_detail:
         uredni_ids = UredniZapis.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
-        historie_urednich_zaznamu = get_history_model_for_model(UredniZapis).objects.filter(id__in=uredni_ids).order_by(
-            '-history_date')
-        vykaz_ids = ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
-        historie_vykazu_prace = get_history_model_for_model(ZakazkaZamestnanec).objects.filter(
-            id__in=vykaz_ids).order_by('-history_date')
+        from simple_history.utils import get_history_model_for_model
+        HistoryU = get_history_model_for_model(UredniZapis)
+        historie_urednich_zaznamu = HistoryU.objects.filter(id__in=uredni_ids).order_by('-history_date')
 
+        vykaz_ids = ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail).values_list('id', flat=True)
+        HistoryV = get_history_model_for_model(ZakazkaZamestnanec)
+        historie_vykazu_prace = HistoryV.objects.filter(id__in=vykaz_ids).order_by('-history_date')
+
+    # --- Přiřazení zaměstnanci (opraveno: Decimal všude uvnitř výpočtu) ------
     prirazeni_vypocty = []
     if zamestnanci_prirazeni:
         for priraz in zamestnanci_prirazeni:
-            prideleno = priraz.prideleno_hodin or 0
-            odpracovano = 0
+            prideleno_dec = Decimal(str(priraz.prideleno_hodin or 0))
+            odpracovano_dec = Decimal("0")
+
             vqs = ZakazkaZamestnanec.objects.filter(
                 zakazka=zakazka_zam,
                 zamestnanec=priraz.zamestnanec
             )
             for v in vqs:
                 if v.cas_od and v.cas_do:
-                    odpracovano += (
-                        datetime.combine(datetime.today(), v.cas_do) -
-                        datetime.combine(datetime.today(), v.cas_od)
-                    ).total_seconds() / 3600
-            zbyva = prideleno - odpracovano
-            if prideleno > 0:
-                podil = zbyva / prideleno
+                    # spočítej přesně v sekundách -> Decimal hodin
+                    dt_od = datetime.combine(v.den_prace, v.cas_od)
+                    dt_do = datetime.combine(v.den_prace, v.cas_do)
+                    secs = max((dt_do - dt_od).total_seconds(), 0.0)
+                    odpracovano_dec += Decimal(str(secs / 3600.0))
+
+            zbyva_dec = prideleno_dec - odpracovano_dec
+
+            if prideleno_dec > 0:
+                podil = zbyva_dec / prideleno_dec
             else:
-                podil = 1
-            if podil <= 0:
+                podil = Decimal("1")
+
+            if podil <= Decimal("0"):
                 barva = "danger"
-            elif podil <= 0.1:
+            elif podil <= Decimal("0.1"):
                 barva = "warning"
             else:
                 barva = "success"
 
             vidi = priraz.datum_prideleni and priraz.datum_prideleni <= now() and not priraz.skryta
             datum_ok = priraz.datum_prideleni and priraz.datum_prideleni <= now()
+
+            # do šablony pošleme floaty (formátuješ vlastními filtry)
             prirazeni_vypocty.append({
                 'prirazeni': priraz,
-                'prideleno': prideleno,
-                'odpracovano': round(odpracovano, 1),
-                'zbyva': round(zbyva, 1),
+                'prideleno': float(prideleno_dec),
+                'odpracovano': float(odpracovano_dec.quantize(Decimal("0.1"))),
+                'zbyva': float(zbyva_dec.quantize(Decimal("0.1"))),
                 'barva': barva,
                 'skryta': priraz.skryta,
                 'vidi': vidi,
                 'datum_ok': datum_ok,
             })
 
+    # --- FINANCE ZAKÁZKY: kompletní rekapitulace do off-canvas ---------------
+    project_finance = None
+    if request.user.is_admin and zakazka_detail:
+        try:
+            project_finance = _project_finance_for(zakazka_detail)
+        except Exception:
+            project_finance = None
+
+    # --- kontext do šablony ---------------------------------------------------
     return render(request, 'homepage.html', {
         'zakazky': zakazky.order_by('zakazka_cislo'),
         'is_admin': request.user.is_admin,
@@ -267,32 +298,43 @@ def homepage_view(request):
         'subdodavatele': subdodavatele,
         'subdodavky': subdodavky,
         'aktivni': aktivni,
+
         'selected_zamestnanci_id': selected_zamestnanci_id,
         'zamestnanci_prirazeni': zamestnanci_prirazeni,
         'zakazka_zam': zakazka_zam,
         'prirazene_ids': prirazene_ids,
         'prirazeni': prirazeni,
+
         'zamestnanec_sidebar': zamestnanec_sidebar,
         'subdodavatel_sidebar': subdodavatel_sidebar,
         'subdodavka_sidebar': subdodavka_sidebar,
         'rozsahy_prace': rozsahy_prace,
+
         'arched_subs_count': arched_subs_count,
         'arched_subs_sum': arched_subs_sum,
+
         'vykazy': vykazy,
-        'zamestnanci_v_zakazce': ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail).values_list(
-            'zamestnanec__id', 'zamestnanec__jmeno', 'zamestnanec__prijmeni').distinct(),
+        'zamestnanci_v_zakazce': ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail)
+            .values_list('zamestnanec__id', 'zamestnanec__jmeno', 'zamestnanec__prijmeni').distinct(),
         'vykazy_zamestnanec': zamestnanec_filter_id,
+
         'odpracovano_hodin': odpracovano_hodin,
         'zbyva_hodin': zbyva_hodin,
         'barva_zbyva': barva_zbyva,
         'progress_percent': progress_percent,
         'predpokladany_cas': predpokladany_cas,
+
         'historie_urednich_zaznamu': historie_urednich_zaznamu,
         'historie_vykazu_prace': historie_vykazu_prace,
+
         'prirazeni_vypocty': prirazeni_vypocty,
+
         'proj_rate': proj_rate,
         'rev_actual': rev_actual,
         'rev_plan': rev_plan,
+
+        # >>> NOVÉ <<<
+        'project_finance': project_finance,
     })
 
 
@@ -1345,359 +1387,173 @@ def employee_weekly_plan_view(request, zamestnanec_id):
         "zamestnanec": zam,
     })
 
-@login_required
 def statistiky_view(request):
-    """
-    Dashboard statistik (jen pro admina)
-
-    Režimy:
-      - scope=month (default) + ym=YYYY-MM
-      - scope=year          + y=YYYY
-      - scope=all           (od prvního záznamu do dneška)
-
-    Vždy:
-      - Pokud období končí v aktuálním měsíci, počítá se jen DO DNEŠKA (včetně).
-      - Mzdy zaměstnanců se prorátují po jednotlivých MĚSÍCÍCH podle podílu
-        pracovních dní zahrnutých v daném měsíci (Po–Pá, bez svátků).
-      - Výnosy = sazba zakázky × hodiny z výkazů.
-      - Externista = hodiny × jeho hodinová sazba.
-      - Režie = součet přes pracovní dny (Po–Pá, bez svátků) 8 h × sazba v daný den.
-      - Rozpady (zaměstnanci/zakázky/klienti) jsou BEZ režie.
-    """
     if not request.user.is_admin:
         return HttpResponseForbidden("Pouze administrátor může zobrazit statistiky.")
 
-    scope = request.GET.get("scope", "month").lower().strip()
+    ZERO = Decimal("0")
 
-    # --- určení období -------------------------------------------------------
-    today_local = localdate()
+    # --- helpers --------------------------------------------------------------
+    def month_bounds(y: int, m: int):
+        last = calendar.monthrange(y, m)[1]
+        return dt.date(y, m, 1), dt.date(y, m, last)
 
-    def month_bounds(y: int, m: int) -> tuple[dt.date, dt.date, int]:
-        nd = calendar.monthrange(y, m)[1]
-        return dt.date(y, m, 1), dt.date(y, m, nd), nd
+    def month_nav(y: int, m: int):
+        prev_y, prev_m = (y - 1, 12) if m == 1 else (y, m - 1)
+        next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
+        return f"{prev_y:04d}-{prev_m:02d}", f"{next_y:04d}-{next_m:02d}"
 
+    today = localdate()
+    scope = (request.GET.get("scope") or "month").lower()
+
+    # --- období ---------------------------------------------------------------
+    prev_ym = next_ym = prev_y = next_y = ""
     if scope == "year":
-        y_param = request.GET.get("y")
-        if y_param:
-            year = int(y_param)
-        else:
-            year = today_local.year
+        year = int(request.GET.get("y") or today.year)
         first_day = dt.date(year, 1, 1)
-        last_day = dt.date(year, 12, 31)
-        # omezení do dneška u aktuálního roku
-        period_end = min(last_day, today_local) if year == today_local.year else last_day
-        nav_prev = f"{year-1}"
-        nav_next = f"{year+1}"
-        year_for_holidays = range(first_day.year, period_end.year + 1)
-
+        last_day  = dt.date(year, 12, 31)
+        calc_until = min(last_day, today) if year == today.year else last_day
+        prev_y, next_y = str(year - 1), str(year + 1)
+        y_for_template, ym_for_template = year, ""
     elif scope == "all":
-        # od nejstaršího výkazu do dneška
-        first = ZakazkaZamestnanec.objects.order_by("den_prace").values_list("den_prace", flat=True).first()
-        if first is None:
-            # fallback: prázdná DB – ber dnešek
-            first_day = period_end = last_day = today_local
-        else:
-            first_day = first
-            last_day = today_local  # „kalendářní konec“ tady není relevantní
-            period_end = today_local
-        nav_prev = nav_next = None
-        year_for_holidays = range(first_day.year, period_end.year + 1)
-
-    else:  # scope == "month" (default)
+        first_v = ZakazkaZamestnanec.objects.order_by("den_prace").values_list("den_prace", flat=True).first()
+        first_day = first_v or today
+        last_day = today
+        calc_until = today
+        y_for_template = ym_for_template = ""
+    else:
         ym = request.GET.get("ym")
         if ym:
             y, m = map(int, ym.split("-"))
         else:
-            y, m = today_local.year, today_local.month
-        first_day, last_day, _ = month_bounds(y, m)
-        # omezení do dneška u aktuálního měsíce
-        period_end = min(last_day, today_local) if (y == today_local.year and m == today_local.month) else last_day
-        (prev_y, prev_m), (next_y, next_m) = _month_nav(y, m)
-        nav_prev = f"{prev_y:04d}-{prev_m:02d}"
-        nav_next = f"{next_y:04d}-{next_m:02d}"
-        year_for_holidays = [y]  # jen tento rok
-
-    # pomocné počty dní
-    days_in_scope = (period_end - first_day).days + 1
-
-    # --- svátky přes VŠECHNY roky v rozsahu ----------------------------------
-    holidays: set[dt.date] = set()
-    for y in year_for_holidays:
-        holidays |= _cz_holidays(y)
-
-    def is_workday(d: dt.date) -> bool:
-        return (d.weekday() < 5) and (d not in holidays)
-
-    # --- helper pro iteraci měsíců v libovolném rozsahu ----------------------
-    def iter_months(start: dt.date, end: dt.date):
-        y, m = start.year, start.month
-        while True:
-            ms, ml, _ = month_bounds(y, m)
-            yield (y, m, ms, ml)
-            if ml >= end:
-                break
-            # posun na další měsíc
-            if m == 12:
-                y += 1; m = 1
-            else:
-                m += 1
-            if dt.date(y, m, 1) > end:
-                break
-
-    # --- helper: režijní sazba v den (fallback 0, pokud helper nemáš) -------
-    def _over_on(day: dt.date) -> Decimal:
-        try:
-            return Decimal(str(_overhead_rate_on(day)))
-        except NameError:
-            return Decimal("0.0")
+            y, m = today.year, today.month
+        first_day, last_day = month_bounds(y, m)
+        calc_until = min(last_day, today) if (y == today.year and m == today.month) else last_day
+        prev_ym, next_ym = month_nav(y, m)
+        y_for_template, ym_for_template = "", f"{y:04d}-{m:02d}"
 
     # --- výkazy v období ------------------------------------------------------
     qs = (
         ZakazkaZamestnanec.objects
-        .filter(den_prace__gte=first_day, den_prace__lte=period_end)
-        .select_related("zakazka", "zamestnanec", "zakazka__klient", "zakazka__sazba")
+        .filter(den_prace__gte=first_day, den_prace__lte=calc_until)
+        .select_related("zamestnanec", "zakazka", "zakazka__klient", "zakazka__sazba")
         .order_by("den_prace")
     )
 
-    # kumulátory
-    total_hours = Decimal("0.0")
-    total_km = Decimal("0.0")
-    labor_cost_external_total = Decimal("0.0")  # externisté: hodiny × sazba_hod
-    travel_cost_total = Decimal("0.0")
-    revenue_total = Decimal("0.0")
-
-    # rozpady (bez režie)
-    by_employee, by_project, by_client = {}, {}, {}
-
-    # podklady pro alokaci mezd zaměstnanců (podle hodin v OBDOBÍ)
-    emp_total_hours: dict[int, Decimal] = {}
-    emp_proj_hours: dict[tuple[int, int], Decimal] = {}
-    emp_client_hours: dict[tuple[int, int], Decimal] = {}
+    workh_by_emp: dict[int, Decimal] = {}
+    km_by_emp: dict[int, Decimal] = {}
 
     for v in qs:
-        hrs = Decimal(str(_hours_between(v.den_prace, v.cas_od, v.cas_do)))
-        if hrs <= 0:
-            continue
-        km = Decimal(str(v.najete_km or 0))
-
-        emp = v.zamestnanec
-        proj = v.zakazka
-        cli = getattr(proj, "klient", None)
-
-        # cestovní náklady
-        rate_km = Decimal(str(emp.sazba_km or 0))
-        travel_cost = km * rate_km
-
-        # výnos
-        proj_rate = Decimal(str(proj.sazba.hodnota)) if getattr(proj, "sazba", None) and proj.sazba.hodnota is not None else Decimal("0.0")
-        revenue = hrs * proj_rate
-
-        total_hours += hrs
-        total_km += km
-        travel_cost_total += travel_cost
-        revenue_total += revenue
-
-        # mzdové: externista přímo hodinovkou, zaměstnanec až v alokaci mezd
-        if getattr(emp, "typ_osoby", None) == Zamestnanec.TYP_EXTERNAL:
-            rate_h = Decimal(str(emp.sazba_hod or 0))
-            labor_cost = hrs * rate_h
-        else:
-            labor_cost = Decimal("0.0")
-
-        # pro alokaci mezd
-        emp_total_hours[emp.id] = emp_total_hours.get(emp.id, Decimal("0.0")) + hrs
-        emp_proj_hours[(emp.id, proj.id)] = emp_proj_hours.get((emp.id, proj.id), Decimal("0.0")) + hrs
-        if cli:
-            emp_client_hours[(emp.id, cli.id)] = emp_client_hours.get((emp.id, cli.id), Decimal("0.0")) + hrs
-
-        # by employee
-        be = by_employee.setdefault(emp.id, {
-            "emp": emp,
-            "hours": Decimal("0.0"), "km": Decimal("0.0"),
-            "labor_cost": Decimal("0.0"), "travel_cost": Decimal("0.0"),
-            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
-            "margin": Decimal("0.0"),
-        })
-        be["hours"] += hrs
-        be["km"] += km
-        be["travel_cost"] += travel_cost
-        be["labor_cost"] += labor_cost
-        be["total_cost"] += (labor_cost + travel_cost)
-        be["revenue"] += revenue
-        be["margin"] += (revenue - (labor_cost + travel_cost))
-
-        # by project
-        bp = by_project.setdefault(proj.id, {
-            "zakazka": proj,
-            "hours": Decimal("0.0"), "km": Decimal("0.0"),
-            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
-            "margin": Decimal("0.0"),
-        })
-        bp["hours"] += hrs
-        bp["km"] += km
-        bp["total_cost"] += (labor_cost + travel_cost)
-        bp["revenue"] += revenue
-        bp["margin"] += (revenue - (labor_cost + travel_cost))
-
-        # by client
-        if cli:
-            bc = by_client.setdefault(cli.id, {
-                "klient": cli,
-                "hours": Decimal("0.0"),
-                "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
-                "margin": Decimal("0.0"),
-            })
-            bc["hours"] += hrs
-            bc["total_cost"] += (labor_cost + travel_cost)
-            bc["revenue"] += revenue
-            bc["margin"] += (revenue - (labor_cost + travel_cost))
-
-    # --- mzdy zaměstnanců: PRORÁTA po měsících v rozsahu ---------------------
-    employees = list(Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EMPLOYEE))
-    salary_by_emp: dict[int, Decimal] = {e.id: Decimal("0.0") for e in employees}
-
-    for (y, m, ms, ml) in iter_months(first_day, period_end):
-        month_scope_start = max(first_day, ms)
-        month_scope_end   = min(period_end, ml)
-
-        # pracovní dny v CELÉM měsíci a v jeho zahrnuté části
-        total_workdays_month = sum(1 for i in range((ml - ms).days + 1) if is_workday(ms + dt.timedelta(days=i)))
-        workdays_in_scope    = sum(1 for i in range((month_scope_end - month_scope_start).days + 1)
-                                   if is_workday(month_scope_start + dt.timedelta(days=i)))
-
-        ratio = (Decimal(workdays_in_scope) / Decimal(total_workdays_month)) if total_workdays_month else Decimal("0.0")
-
-        if ratio > 0:
-            for emp in employees:
-                mzda = Decimal(str(emp.mzda_mesic or 0))
-                salary_by_emp[emp.id] += (mzda * ratio)
-
-    # sečti mzdy a zapiš do by_employee + alokuj do projektů/klientů podle hodin
-    salary_total = sum(salary_by_emp.values(), Decimal("0.0"))
-    for emp in employees:
-        mzda_emp = salary_by_emp.get(emp.id, Decimal("0.0"))
-        if mzda_emp <= 0:
-            continue
-
-        be = by_employee.setdefault(emp.id, {
-            "emp": emp,
-            "hours": Decimal("0.0"), "km": Decimal("0.0"),
-            "labor_cost": Decimal("0.0"), "travel_cost": Decimal("0.0"),
-            "total_cost": Decimal("0.0"), "revenue": Decimal("0.0"),
-            "margin": Decimal("0.0"),
-        })
-        be["labor_cost"] += mzda_emp
-        be["total_cost"] += mzda_emp
-        be["margin"] -= mzda_emp
-
-        emp_hours = emp_total_hours.get(emp.id, Decimal("0.0"))
-        if emp_hours > 0:
-            # rozdělení mzdy mezi projekty/klienty
-            for (e_id, proj_id), h in emp_proj_hours.items():
-                if e_id != emp.id or h <= 0:
-                    continue
-                share = (h / emp_hours) * mzda_emp
-                bp = by_project.get(proj_id)
-                if bp:
-                    bp["total_cost"] += share
-                    bp["margin"] -= share
-                    proj = bp["zakazka"]
-                    cli = getattr(proj, "klient", None)
-                    if cli:
-                        bc = by_client.get(cli.id)
-                        if bc:
-                            bc["total_cost"] += share
-                            bc["margin"] -= share
-        # pokud nemá hodiny, mzda zůstává jen na řádku zaměstnance (bez „nealokované“ položky)
-
-    # --- plán hodin v období (součet přes zaměstnance) ------------------------
-    plan_total = Decimal("0.0")
-    active_emps = Zamestnanec.objects.filter(is_active=True)
-    for emp in active_emps:
-        for i in range(days_in_scope):
-            dte = first_day + dt.timedelta(days=i)
+        hrs = _hours_between(v.den_prace, v.cas_od, v.cas_do)
+        # ── defenzivně: zaruč Decimal ─────────────────────────────────────────
+        if not isinstance(hrs, Decimal):
             try:
-                plan_i = _plan_for_day_custom(emp, dte, holidays)
-            except NameError:
-                plan_i = _plan_for_day(dte, holidays)
-            plan_total += Decimal(str(plan_i))
-    diff_total = (total_hours - plan_total)
+                hrs = Decimal(str(hrs))
+            except Exception:
+                hrs = ZERO
+        workh_by_emp[v.zamestnanec_id] = workh_by_emp.get(v.zamestnanec_id, ZERO) + hrs
 
-    # --- režie jen do period_end ---------------------------------------------
-    overhead_total = Decimal("0.0")
-    for i in range(days_in_scope):
-        d = first_day + dt.timedelta(days=i)
-        if d.weekday() < 5 and d not in holidays:
-            overhead_total += Decimal("8.0") * _over_on(d)
+        km = Decimal(str(v.najete_km or 0))
+        km_by_emp[v.zamestnanec_id] = km_by_emp.get(v.zamestnanec_id, ZERO) + km
 
-    # interní náklady a marže
-    labor_cost_total = (labor_cost_external_total + salary_total)
-    internal_cost_total = (labor_cost_external_total + salary_total + travel_cost_total + overhead_total)
-    margin_total = (revenue_total - internal_cost_total)
+    # --- Mzdy zaměstnanci -----------------------------------------------------
+    employees_rows = []
+    oh_rate_today = overhead_rate_on(calc_until)  # Kč/h
 
-    # KPI počty
-    kpi = {
-        "projects_active": Zakazka.objects.filter(zakazka_konec_skut__isnull=True).count(),
-        "employees_active": active_emps.count(),
-        "clients": Klient.objects.count(),
-        "subdodavatels": Subdodavatel.objects.count(),
-    }
+    for emp in Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EMPLOYEE):
+        plan_h = planned_hours(emp, first_day, calc_until)                     # Decimal
+        rate_h = Decimal(str(emp.sazba_hod or 0))                              # Kč/h
+        mzda = plan_h * rate_h
 
-    # seřazení tabulek
-    by_emp = sorted(by_employee.values(), key=lambda x: (x["total_cost"], x["hours"]), reverse=True)
-    by_proj = sorted(by_project.values(),  key=lambda x: (x["total_cost"], x["hours"]), reverse=True)
-    by_cli  = sorted(by_client.values(),   key=lambda x: (x["revenue"], x["hours"]), reverse=True)
+        km_sum  = km_by_emp.get(emp.id, ZERO)
+        rate_km = Decimal(str(emp.sazba_km or 0))
+        cestovne = km_sum * rate_km
 
-    # přehled nových/ukončených zakázek v období
+        celkem = mzda + cestovne
+
+        divisor = Decimal(str(getattr(emp, "overhead_divisor", 1) or 1))
+        if divisor <= 0:
+            divisor = Decimal("1")
+        celk_naklad_hod = rate_h + (oh_rate_today / divisor)
+
+        employees_rows.append({
+            "emp": emp,
+            "plan_h": plan_h,
+            "sazba_h": rate_h,
+            "mzda": mzda,
+            "km": km_sum,
+            "sazba_km": rate_km,
+            "cestovne": cestovne,
+            "celkem": celkem,
+            "celk_naklad_hod": celk_naklad_hod,
+        })
+
+    employees_total = sum((r["celkem"] for r in employees_rows), ZERO)
+
+    # --- Externisté -----------------------------------------------------------
+    externist_rows = []
+    for emp in Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EXTERNAL):
+        hrs = workh_by_emp.get(emp.id, ZERO)
+        rate_h = Decimal(str(emp.sazba_hod or 0))
+        castka = hrs * rate_h
+
+        km_sum  = km_by_emp.get(emp.id, ZERO)
+        rate_km = Decimal(str(emp.sazba_km or 0))
+        cestovne = km_sum * rate_km
+
+        celkem = castka + cestovne
+
+        divisor = Decimal(str(getattr(emp, "overhead_divisor", 1) or 1))
+        if divisor <= 0:
+            divisor = Decimal("1")
+        celk_naklad_hod = rate_h + (oh_rate_today / divisor)
+
+        externist_rows.append({
+            "emp": emp,
+            "hours": hrs,
+            "rate_h": rate_h,
+            "castka": castka,
+            "km": km_sum,
+            "rate_km": rate_km,
+            "cestovne": cestovne,
+            "celkem": celkem,
+            "celk_naklad_hod": celk_naklad_hod,
+        })
+
+    externists_total = sum((r["celkem"] for r in externist_rows), ZERO)
+
+    # --- Nové / ukončené zakázky ---------------------------------------------
     new_projects = (
         Zakazka.objects
-        .filter(zakazka_start__date__gte=first_day, zakazka_start__date__lte=period_end)
+        .filter(zakazka_start__date__gte=first_day, zakazka_start__date__lte=calc_until)
         .order_by("zakazka_start")
     )
     closed_projects = (
         Zakazka.objects
-        .filter(zakazka_konec_skut__date__gte=first_day, zakazka_konec_skut__date__lte=period_end)
+        .filter(zakazka_konec_skut__date__gte=first_day, zakazka_konec_skut__date__lte=calc_until)
         .order_by("zakazka_konec_skut")
     )
 
-    context = {
+    return render(request, "statistiky.html", {
         "scope": scope,
-        # pro month
-        "ym": f"{first_day.year:04d}-{first_day.month:02d}" if scope == "month" else "",
-        "prev_ym": nav_prev if scope == "month" else "",
-        "next_ym": nav_next if scope == "month" else "",
-        # pro year
-        "y": first_day.year if scope != "all" else "",
-        "prev_y": nav_prev if scope == "year" else "",
-        "next_y": nav_next if scope == "year" else "",
+        "ym": ym_for_template,
+        "y": y_for_template,
+        "prev_ym": prev_ym, "next_ym": next_ym,
+        "prev_y": prev_y,   "next_y": next_y,
 
         "first_day": first_day,
         "last_day": last_day,
-        "calc_until": period_end,
+        "calc_until": calc_until,
 
-        "kpi": kpi,
-        "total_hours": total_hours,
-        "total_km": total_km,
-        "plan_total": plan_total,
-        "diff_total": diff_total,
+        "employees_rows": employees_rows,
+        "employees_total": employees_total,
 
-        "salary_total": salary_total,
-        "labor_cost_external_total": labor_cost_external_total,
-        "travel_cost_total": travel_cost_total,
-        "overhead_total": overhead_total,
-        "labor_cost_total": labor_cost_total,
-        "internal_cost_total": internal_cost_total,
-        "revenue_total": revenue_total,
-        "margin_total": margin_total,
+        "externist_rows": externist_rows,
+        "externists_total": externists_total,
 
         "new_projects": new_projects,
         "closed_projects": closed_projects,
-
-        "by_emp": by_emp,
-        "by_proj": by_proj,
-        "by_client": by_cli,
-    }
-    return render(request, "statistiky.html", context)
+    })
 
 
 
@@ -1733,3 +1589,171 @@ def _overhead_rate_on(day: dt.date) -> Decimal:
     """
     rec = OverheadRate.objects.filter(valid_from__lte=day).order_by("-valid_from").first()
     return Decimal(str(rec.rate_per_hour)) if rec else Decimal("0.00")
+
+def _q2(x: Decimal | None) -> Decimal | None:
+    if x is None:
+        return None
+    return Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def _as_dec(val, default="0"):
+    try:
+        return Decimal(str(val))
+    except Exception:
+        return Decimal(default)
+
+def _project_finance_for(zakazka) -> dict | None:
+    """
+    Vypočítá přehled financí pro offcanvas:
+      - Předpoklad: predp_cas * sazba  vs. predp_cas * orientacni_naklady (Kč/h)
+      - Skutečnost: (sjednana_cena - subdodávky Arched) - (hodiny * (sazba_hod + režie/overhead_divisor)) - cestovné
+      - Rozpad dle osob
+    """
+    if not zakazka:
+        return None
+
+    ZERO = Decimal("0")
+
+    # --- PŘEDPOKLAD ----------------------------------------------------------
+    predp_cas = _as_dec(getattr(zakazka, "predpokladany_cas", 0), "0")
+    sazba = None
+    if getattr(zakazka, "sazba_id", None):
+        sazba = _as_dec(getattr(zakazka.sazba, "hodnota", None), None)
+
+    orient_nakl_hod = None
+    if getattr(zakazka, "orientacni_naklady", None) is not None:
+        orient_nakl_hod = _as_dec(zakazka.orientacni_naklady, None)
+
+    predp_vynos = predp_naklad = predp_zisk = None
+    if sazba is not None:
+        predp_vynos = predp_cas * sazba
+    if orient_nakl_hod is not None:
+        predp_naklad = predp_cas * orient_nakl_hod
+    if predp_vynos is not None and predp_naklad is not None:
+        predp_zisk = predp_vynos - predp_naklad
+
+    # --- SKUTEČNOST: hrubý výnos ---------------------------------------------
+    sjednana_cena = None
+    if getattr(zakazka, "sjednana_cena", None) is not None:
+        sjednana_cena = _as_dec(zakazka.sjednana_cena, None)
+
+    subdodavky_arched = ZakazkaSubdodavka.objects.filter(
+        zakazka=zakazka, fakturuje_arched=True
+    ).aggregate(s=Sum("cena"))["s"] or ZERO
+
+    hruby_vynos = None
+    if sjednana_cena is not None:
+        hruby_vynos = sjednana_cena - _as_dec(subdodavky_arched, "0")
+
+    # --- SKUTEČNOST: náklady práce + režie + cestovné ------------------------
+    logs = (
+        ZakazkaZamestnanec.objects
+        .filter(zakazka=zakazka)
+        .select_related("zamestnanec")
+        .order_by("den_prace")
+    )
+
+    hours_by_emp: dict[int, Decimal] = defaultdict(lambda: ZERO)
+    km_by_emp: dict[int, Decimal]    = defaultdict(lambda: ZERO)
+
+    wages_sum = ZERO           # čisté hodinové sazby zaměstnanců
+    overhead_sum = ZERO        # režijní část (přepočteno dle overhead_divisor)
+    cestovne_sum = ZERO
+
+    per_emp_tmp: dict[int, dict] = {}
+
+    for v in logs:
+        h = _as_dec(_hours_between(v.den_prace, v.cas_od, v.cas_do), "0")
+        if h <= ZERO:
+            continue
+
+        emp = v.zamestnanec
+        hours_by_emp[emp.id] += h
+
+        km = _as_dec(getattr(v, "najete_km", 0), "0")
+        km_by_emp[emp.id] += km
+
+        rate_h = _as_dec(getattr(emp, "sazba_hod", 0), "0")     # Kč/h člověk
+        rate_km = _as_dec(getattr(emp, "sazba_km", 0), "0")     # Kč/km
+        divisor = _as_dec(getattr(emp, "overhead_divisor", 1) or 1, "1")
+        if divisor <= ZERO:
+            divisor = Decimal("1")
+
+        # Režijní sazbu vezmeme platnou v den výkazu, a vydělíme divisorem dané osoby
+        try:
+            oh_raw = overhead_rate_on(v.den_prace)  # Kč/h (Decimal)
+            oh_part = _as_dec(oh_raw, "0") / divisor
+        except Exception:
+            oh_part = ZERO
+
+        wages_sum   += h * rate_h
+        overhead_sum += h * oh_part
+        cestovne_sum += km * rate_km
+
+        agg = per_emp_tmp.get(emp.id)
+        if not agg:
+            agg = {
+                "emp": f"{getattr(emp, 'jmeno', '')} {getattr(emp, 'prijmeni', '')}".strip() or getattr(emp, 'username', '—'),
+                "hod": ZERO,
+                "cestovne": ZERO,
+                "wages": ZERO,
+                "over": ZERO,
+            }
+            per_emp_tmp[emp.id] = agg
+        agg["hod"]      += h
+        agg["cestovne"] += km * rate_km
+        agg["wages"]    += h * rate_h
+        agg["over"]     += h * oh_part
+
+    skut_hodin = sum(hours_by_emp.values(), ZERO)
+    skut_hod_sazba = None
+    if hruby_vynos is not None and skut_hodin > ZERO:
+        skut_hod_sazba = hruby_vynos / skut_hodin
+
+    # per-employee tabulka
+    per_emp = []
+    for agg in per_emp_tmp.values():
+        if agg["hod"] > ZERO or agg["cestovne"] > ZERO:
+            naklad_hod = (agg["wages"] + agg["over"]) / (agg["hod"] or Decimal("1"))
+            celkem = agg["wages"] + agg["over"] + agg["cestovne"]
+            per_emp.append({
+                "emp": agg["emp"],
+                "hod": _q2(agg["hod"]),
+                "cestovne": _q2(agg["cestovne"]),
+                "naklad_hod": _q2(naklad_hod),
+                "celkem": _q2(celkem),
+            })
+
+    naklady_prace_celkem = wages_sum
+    rezie_celkem = overhead_sum
+    naklady_celkem = wages_sum + overhead_sum + cestovne_sum
+
+    skut_zisk = None
+    if hruby_vynos is not None:
+        skut_zisk = hruby_vynos - naklady_celkem
+
+    return {
+        # Předpoklad
+        "predp_cas": _q2(predp_cas),
+        "sazba": _q2(sazba),
+        "predp_vynos": _q2(predp_vynos),
+        "orient_nakl_hod": _q2(orient_nakl_hod),
+        "predp_naklad": _q2(predp_naklad),
+        "predp_zisk": _q2(predp_zisk),
+
+        # Skutečnost
+        "sjednana_cena": _q2(sjednana_cena),
+        "subdodavky_arched": _q2(subdodavky_arched),
+        "hruby_vynos": _q2(hruby_vynos),
+
+        "skut_hodin": _q2(skut_hodin),
+        "skut_hod_sazba": _q2(skut_hod_sazba),
+
+        "cestovne_celkem": _q2(cestovne_sum),
+        "naklady_prace_celkem": _q2(naklady_prace_celkem),
+        "rezie_celkem": _q2(rezie_celkem),
+        "naklady_celkem": _q2(naklady_celkem),
+
+        "skut_zisk": _q2(skut_zisk),
+
+        "per_emp": per_emp,
+    }

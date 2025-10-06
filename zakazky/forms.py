@@ -138,7 +138,7 @@ class EmployeeForm(UserCreationForm):
 class EmployeeEditForm(forms.ModelForm):
     class Meta:
         model = Zamestnanec
-        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod',
+        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod', 'rezie_hod',
             "typ_osoby",
             "mzda_mesic",
             "sazba_km",)
@@ -152,6 +152,7 @@ class EmployeeEditForm(forms.ModelForm):
             "typ_osoby": 'externista/zaměstnanec',
             "mzda_mesic": 'mzda/měsíc (vyplnit jen u zaměstnanců)',
             "sazba_km": 'sazba na kilometr',
+            "rezie_hod": 'Režie na pracovníka (Kč/h)',
         }
         widgets = {
             'username': forms.TextInput(attrs={'class': 'form-control'}),
@@ -164,6 +165,7 @@ class EmployeeEditForm(forms.ModelForm):
             "mzda_mesic": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
             "sazba_hod": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
             "sazba_km": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
+            "rezie_hod": forms.NumberInput(attrs={"min":"0","step":"0.01","class":"form-control"}),
         }
 
 
@@ -440,17 +442,25 @@ class EmployeeWeeklyPlanForm(forms.ModelForm):
 class OverheadRateForm(forms.ModelForm):
     class Meta:
         model = OverheadRate
-        fields = ["valid_from", "rate_per_hour", "note"]
+        fields = ["valid_from", "rate_per_hour", "divisor", "note"]
         labels = {
             "valid_from": "Platí od",
-            "rate_per_hour": "Sazba (Kč / hod)",
+            "rate_per_hour": "Režijní sazba (Kč/h)",
+            "divisor": "Dělič (celofiremní)",
             "note": "Poznámka",
         }
         widgets = {
             "valid_from": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "rate_per_hour": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
+            "divisor": forms.NumberInput(attrs={"step": "0.1", "min": "0.1", "class": "form-control"}),
             "note": forms.TextInput(attrs={"class": "form-control"}),
         }
+
+    def clean_divisor(self):
+        d = self.cleaned_data["divisor"]
+        if d is None or d <= 0:
+            raise forms.ValidationError("Dělič musí být kladný.")
+        return d
 
     def clean_rate_per_hour(self):
         v = self.cleaned_data["rate_per_hour"]
