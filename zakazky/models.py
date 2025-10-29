@@ -30,7 +30,13 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     prijmeni = models.CharField(max_length=255)
     titul = models.CharField(max_length=50, blank=True, null=True)
     datum_nastup = models.DateTimeField(default=now)
-    sazba_hod = models.DecimalField(max_digits=18, decimal_places=2)
+
+    sazba_hod = models.DecimalField(
+        max_digits=18, decimal_places=2,
+        null=True, blank=True,
+        help_text="Hodinová sazba (povinná jen pro externisty)."
+    )
+
     sazba_km = models.DecimalField(max_digits=18, decimal_places=2, blank=True, null=True)
     is_admin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -72,10 +78,23 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     objects = ZamestnanecManager()
 
     USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['jmeno', 'prijmeni', 'datum_nastup', 'sazba_hod']
+    # ⬇️ odstraněno 'sazba_hod'
+    REQUIRED_FIELDS = ['jmeno', 'prijmeni', 'datum_nastup']
 
     class Meta:
         db_table = 'Zamestnanec'
+        constraints = [
+            # Externista musí mít vyplněnou hodinovou sazbu; zaměstnanec nemusí
+            models.CheckConstraint(
+                name="ext_requires_sazba_hod",
+                check=models.Q(typ_osoby='EMP') | models.Q(sazba_hod__isnull=False),
+            ),
+            # Nepovinné, ale když je vyplněná, nesmí být záporná
+            models.CheckConstraint(
+                name="sazba_hod_nonnegative_or_null",
+                check=models.Q(sazba_hod__gte=0) | models.Q(sazba_hod__isnull=True),
+            ),
+        ]
 
     def __str__(self):
         return f"{self.jmeno} {self.prijmeni}"

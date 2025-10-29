@@ -138,6 +138,57 @@
     </table>
   </div>
 
+  <!-- Výkony po zakázkách (v období) -->
+  <h5 class="mt-4">Výkony po zakázkách (v období)</h5>
+  {% if projects_month_tables %}
+    {% for t in projects_month_tables %}
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <strong>{{ t.zakazka.zakazka_cislo }}</strong>
+            — {{ t.zakazka.nazev }}
+            {% if t.zakazka.klient %}<span class="text-muted">· {{ t.zakazka.klient.nazev }}</span>{% endif %}
+          </div>
+          <div class="text-end small">
+            <span class="text-muted">Celkem hodin:</span> <strong>{{ t.total_hours|floatformat:2 }}</strong>
+            · <span class="text-muted">Výnosy:</span> <strong>{{ t.total_vynosy|format_cislo }} Kč</strong>
+            · <span class="text-muted">Náklady:</span> <strong>{{ t.total_naklady|format_cislo }} Kč</strong>
+            · <span class="text-muted">Zisk:</span>
+            <strong class="{% if t.total_zisk < 0 %}text-danger{% endif %}">{{ t.total_zisk|format_cislo }} Kč</strong>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle">
+            <thead>
+              <tr>
+                <th>Osoba</th>
+                <th class="text-end">Hodiny (h)</th>
+                <th class="text-end">Náklady (Kč)</th>
+                <th class="text-end">Výnosy (Kč)</th>
+                <th class="text-end">Zisk (Kč)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in t.rows %}
+                <tr>
+                  <td>{{ r.emp.jmeno }} {{ r.emp.prijmeni }}</td>
+                  <td class="text-end">{{ r.hours|floatformat:2 }}</td>
+                  <td class="text-end">{{ r.naklady|format_cislo }}</td>
+                  <td class="text-end">{{ r.vynosy|format_cislo }}</td>
+                  <td class="text-end {% if r.zisk < 0 %}text-danger{% endif %}">{{ r.zisk|format_cislo }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5" class="text-center text-muted">Žádná data.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="text-muted">V období nejsou žádné výkazy k zobrazení.</div>
+  {% endif %}
+
   <!-- Nové a ukončené zakázky -->
   <div class="row g-3">
     <div class="col-md-6">

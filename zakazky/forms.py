@@ -1,9 +1,10 @@
-from datetime import datetime
-
+from datetime import datetime, date, timedelta
+import calendar
+from decimal import Decimal
 from django import forms
 from django.forms import DateInput, Textarea, TimeInput
 from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
-from django.utils.timezone import now
+from django.utils.timezone import now, localdate
 from django.forms import modelformset_factory
 from django.utils.timezone import localtime
 
@@ -66,21 +67,21 @@ class ZakazkaForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # 🔹 EDITACE: předvyplň sazbu z dané zakázky
         if self.instance and self.instance.pk and getattr(self.instance, "sazba_id", None):
             self.fields['sazba_hodnota'].initial = self.instance.sazba.hodnota
         else:
-            # 🔹 VYTVOŘENÍ: když existuje nějaká sazba, nabídni nejnovější, jinak 0
             latest = Sazba.objects.order_by('-sazba_start').first()
             self.fields['sazba_hodnota'].initial = latest.hodnota if latest else 0
 
-        # Datumová pole předvyplnit v ISO formátu (pro <input type="date">)
         for field_name in ['termin', 'zakazka_start', 'zakazka_konec_predp', 'zakazka_konec_skut']:
             value = getattr(self.instance, field_name, None)
             if value:
                 self.initial[field_name] = value.strftime('%Y-%m-%d')
 
-    # (volitelné) – tyhle clean_* nechávám, jak je máš
+        tail = [name for name in ('sjednana_cena', 'zaloha') if name in self.fields]
+        head = [n for n in list(self.fields.keys()) if n not in tail]
+        self.order_fields(head + tail)
+
     def clean_termin(self):
         datum = self.cleaned_data.get('termin')
         if datum and isinstance(datum, datetime):
@@ -109,17 +110,16 @@ class ZakazkaForm(forms.ModelForm):
         zakazka = super().save(commit=False)
         nova_hodnota = self.cleaned_data['sazba_hodnota']
 
-        # 🔹 Pokud je to editace a hodnota sazby se nezměnila → ponech původní Sazba
         if zakazka.pk and zakazka.sazba_id and zakazka.sazba.hodnota == nova_hodnota:
             pass
         else:
-            # jinak vytvoř novou Sazba (nový ceník od teď) a přiřaď ji
             sazba = Sazba.objects.create(hodnota=nova_hodnota, sazba_start=now())
             zakazka.sazba = sazba
 
         if commit:
             zakazka.save()
         return zakazka
+
 
 
 class EmployeeForm(UserCreationForm):
@@ -136,12 +136,18 @@ class EmployeeForm(UserCreationForm):
 
 
 class EmployeeEditForm(forms.ModelForm):
+    # Hodinová sazba v editaci není povinná; u zaměstnanců (interních) ji ignorujeme.
+    sazba_hod = forms.DecimalField(
+        label='Hodinová sazba',
+        required=False,
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": "0", "class": "form-control"})
+    )
+
     class Meta:
         model = Zamestnanec
-        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin', 'sazba_hod', 'rezie_hod',
-            "typ_osoby",
-            "mzda_mesic",
-            "sazba_km",)
+        fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin',
+                  'sazba_hod', 'rezie_hod', "typ_osoby", "mzda_mesic", "sazba_km")
         labels = {
             'username': 'Uživatelské jméno (přihlašovací)',
             'jmeno': 'Jméno',
@@ -159,14 +165,31 @@ class EmployeeEditForm(forms.ModelForm):
             'jmeno': forms.TextInput(attrs={'class': 'form-control'}),
             'prijmeni': forms.TextInput(attrs={'class': 'form-control'}),
             'titul': forms.TextInput(attrs={'class': 'form-control'}),
-            'sazba_hod': forms.NumberInput(attrs={'class': 'form-control'}),
             'is_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             "typ_osoby": forms.Select(attrs={"class": "form-select"}),
             "mzda_mesic": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
-            "sazba_hod": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
             "sazba_km": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
-            "rezie_hod": forms.NumberInput(attrs={"min":"0","step":"0.01","class":"form-control"}),
+            "rezie_hod": forms.NumberInput(attrs={"min": "0", "step": "0.01", "class": "form-control"}),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        typ = cleaned.get("typ_osoby")
+        sazba = cleaned.get("sazba_hod")
+        # Externista musí mít hodinovou sazbu vyplněnou
+        if typ == Zamestnanec.TYP_EXTERNAL and (sazba is None):
+            self.add_error("sazba_hod", "Externista musí mít vyplněnou hodinovou sazbu.")
+        return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        # U interních zaměstnanců sazbu neukládáme (bude se dopočítávat dynamicky)
+        if obj.typ_osoby == Zamestnanec.TYP_EMPLOYEE:
+            obj.sazba_hod = None
+        if commit:
+            obj.save()
+        return obj
+
 
 
 class ClientForm(forms.ModelForm):
@@ -467,3 +490,30 @@ class OverheadRateForm(forms.ModelForm):
         if v is None or v < 0:
             raise forms.ValidationError("Sazba musí být nezáporná.")
         return v
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+def _cz_holidays(year: int) -> set[date]:
+    """CZ státní svátky: fixní + Velikonoční pondělí (stejné jako ve views)."""
+    easter_mon = _easter_sunday(year) + timedelta(days=1)
+    fixed = {
+        (1,1),(5,1),(5,8),(7,5),(7,6),(9,28),(10,28),(11,17),(12,24),(12,25),(12,26)
+    }
+    s = {date(year, m, d) for (m, d) in fixed}
+    s.add(easter_mon)
+    return s
