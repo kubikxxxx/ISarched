@@ -206,6 +206,8 @@ class Zakazka(models.Model):
         decimal_places=2,
         null=True,      # ← nepovinné
         blank=True,     # ← nepovinné
+        help_text="pokud není vyplněná, přepočítá se čas*sazba"
+
     )
     zaloha = models.DecimalField(
         "Záloha",
