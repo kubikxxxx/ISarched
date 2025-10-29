@@ -55,7 +55,6 @@
             text-overflow: ellipsis;
         }
 
-        /* Finance offcanvas – širší panel */
         .offcanvas-fin {
             --bs-offcanvas-width: 720px;
         }
@@ -83,7 +82,8 @@
             <h5 class="fw-bold">Zakázky</h5>
             {% if is_admin %}
                 <a href="{% url 'statistiky' %}" class="btn btn-primary w-100 mb-2">📊 Statistiky</a>
-                <a href="{% url 'overhead_list' %}" class="btn btn-outline-dark w-100 mb-2">⚙️ Režijní náklady</a>
+                <!-- DELETE: tlačítko na globální režii bylo odstraněno -->
+                <!-- <a href="{% url 'overhead_list' %}" class="btn btn-outline-dark w-100 mb-2">⚙️ Režijní náklady</a> -->
                 <a href="{% url 'create_zakazka' %}" class="btn btn-outline-success w-100 mb-3">+ Nová zakázka</a>
             {% endif %}
             {% if is_admin %}
@@ -213,12 +213,7 @@
                                             <th>Rozpočet na stavbu</th>
                                             <td>{{ zakazka_detail.orientacni_naklady|format_cislo }} kč</td>
                                         </tr>
-                                        <tr>
-                                            <th>Výnosy (sazba × hodiny)</th>
-                                            <td>{% if rev_actual is not None and rev_plan is not None %}
-                                                {{ rev_actual|format_cislo }} Kč <span class="text-muted">z</span>
-                                                {{ rev_plan|format_cislo }} Kč{% else %}–{% endif %}</td>
-                                        </tr>
+                                        <!-- DELETE: Výnosy (sazba × hodiny) byl odstraněn -->
                                         <tr>
                                             <th>Sjednaná cena</th>
                                             <td>{% if zakazka_detail.sjednana_cena is not None %}
@@ -303,7 +298,6 @@
                                     {% endif %}
                                 </p>
 
-                                <!-- PROGRESS BAR -->
                                 <div class="progress mb-3" style="height: 25px;">
                                     <div class="progress-bar bg-{{ barva_zbyva }}" role="progressbar"
                                          style="width: {{ progress_percent|floatformat:0 }}%;"
@@ -312,7 +306,6 @@
                                     </div>
                                 </div>
 
-                                <!-- ADMIN: filtr zaměstnanců -->
                                 {% if is_admin %}
                                     <form method="get" class="mb-2">
                                         <input type="hidden" name="detail_zakazka" value="{{ zakazka_detail.id }}">
@@ -330,7 +323,6 @@
                                     </form>
                                 {% endif %}
 
-                                <!-- VÝPIS VÝKAZŮ -->
                                 <ul class="list-group mb-2">
                                     {% for z in vykazy %}
                                         {% if is_admin or z.zamestnanec.id == request.user.id %}
@@ -391,46 +383,48 @@
                                             <th>Čas</th>
                                             <td class="num">
                                                 {% if project_finance.predp_cas is not None %}
-                                                    {{ project_finance.predp_cas|hodiny_hhmm }} h{% else %}–{% endif %}
+                                                    {{ project_finance.predp_cas|hodiny_hhmm }} h
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Sazba</th>
                                             <td class="num">
                                                 {% if project_finance.sazba is not None %}
-                                                    {{ project_finance.sazba|format_cislo }} Kč/h{% else %}–{% endif %}
+                                                    {{ project_finance.sazba|format_cislo }} Kč/h
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Předpokládaný výnos</th>
                                             <td class="num">
                                                 {% if project_finance.predp_vynos is not None %}
-                                                    {{ project_finance.predp_vynos|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.predp_vynos|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Orientační náklad (hod)</th>
                                             <td class="num">
                                                 {% if project_finance.orient_nakl_hod is not None %}
-                                                    {{ project_finance.orient_nakl_hod|format_cislo }} Kč/h{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.orient_nakl_hod|format_cislo }} Kč/h
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Předpokládaný náklad</th>
                                             <td class="num">
                                                 {% if project_finance.predp_naklad is not None %}
-                                                    {{ project_finance.predp_naklad|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.predp_naklad|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr class="table-light">
                                             <th>Předpokládaný zisk</th>
                                             <td class="num fw-semibold">
                                                 {% if project_finance.predp_zisk is not None %}
-                                                    {{ project_finance.predp_zisk|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.predp_zisk|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                     </table>
@@ -444,8 +438,8 @@
                                             <th>Sjednaná cena</th>
                                             <td class="num">
                                                 {% if project_finance.sjednana_cena is not None %}
-                                                    {{ project_finance.sjednana_cena|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.sjednana_cena|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
@@ -456,23 +450,24 @@
                                             <th>Hrubý výnos (sjednané − subdodávky)</th>
                                             <td class="num">
                                                 {% if project_finance.hruby_vynos is not None %}
-                                                    {{ project_finance.hruby_vynos|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.hruby_vynos|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Odpracované hodiny celkem</th>
                                             <td class="num">
                                                 {% if project_finance.skut_hodin is not None %}
-                                                    {{ project_finance.skut_hodin|hodiny_hhmm }} h{% else %}–{% endif %}
+                                                    {{ project_finance.skut_hodin|hodiny_hhmm }} h
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Skutečná hodinová sazba</th>
                                             <td class="num">
                                                 {% if project_finance.skut_hod_sazba is not None %}
-                                                    {{ project_finance.skut_hod_sazba|format_cislo }} Kč/h{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.skut_hod_sazba|format_cislo }} Kč/h
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                         <tr>
@@ -481,15 +476,8 @@
                                         </tr>
                                         <tr>
                                             <th>Náklady práce celkem</th>
-                                            <td class="num">{{ project_finance.naklady_prace_celkem|format_cislo }} Kč
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <th>Režie</th>
                                             <td class="num">
-                                                {% if project_finance.rezie_celkem is not None %}
-                                                    {{ project_finance.rezie_celkem|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                {{ project_finance.naklady_prace_celkem|format_cislo }} Kč
                                             </td>
                                         </tr>
                                         <tr class="table-light">
@@ -502,8 +490,8 @@
                                             <th>Skutečný zisk</th>
                                             <td class="num fw-bold {% if project_finance.skut_zisk is not None and project_finance.skut_zisk < 0 %}text-danger{% endif %}">
                                                 {% if project_finance.skut_zisk is not None %}
-                                                    {{ project_finance.skut_zisk|format_cislo }} Kč{% else %}
-                                                    –{% endif %}
+                                                    {{ project_finance.skut_zisk|format_cislo }} Kč
+                                                {% else %}–{% endif %}
                                             </td>
                                         </tr>
                                     </table>
