@@ -154,7 +154,7 @@
             · <span class="text-muted">Výnosy:</span> <strong>{{ t.total_vynosy|format_cislo }} Kč</strong>
             · <span class="text-muted">Náklady:</span> <strong>{{ t.total_naklady|format_cislo }} Kč</strong>
             · <span class="text-muted">Zisk:</span>
-            <strong class="{% if t.total_zisk < 0 %}text-danger{% endif %}">{{ t.total_zisk|format_cislo }} Kč</strong>
+            <strong class="{% if t.total_zisk < 0 %}text-danger{% else %}text-success{% endif %}">{{ t.total_zisk|format_cislo }} Kč</strong>
           </div>
         </div>
         <div class="table-responsive">
