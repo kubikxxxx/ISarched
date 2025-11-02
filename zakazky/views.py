@@ -94,13 +94,16 @@ def _fmt_hhmm_from_hours(h: Decimal) -> str:
 def homepage_view(request):
     # --- levý sloupec: seznam zakázek ---------------------------------------
     aktivni = "1"
+    # NOVÉ: zda zobrazovat zisk u zakázek (jen pro admina)
+    show_fin = "1" if (request.user.is_admin and request.GET.get("show_fin", "0") == "1") else "0"
+
     if request.user.is_admin:
         aktivni = request.GET.get("aktivni", "1")
-        zakazky = Zakazka.objects.all()
+        zakazky_qs = Zakazka.objects.all()
         if aktivni == "1":
-            zakazky = zakazky.filter(zakazka_konec_skut__isnull=True)
+            zakazky_qs = zakazky_qs.filter(zakazka_konec_skut__isnull=True)
     else:
-        zakazky = Zakazka.objects.filter(
+        zakazky_qs = Zakazka.objects.filter(
             prirazeni__zamestnanec=request.user,
             prirazeni__datum_prideleni__lte=now(),
             prirazeni__skryta=False
@@ -162,7 +165,6 @@ def homepage_view(request):
 
     if zakazka_detail:
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
-
         if request.user.is_admin:
             relevantni_vykazy = vykazy_qs
             predpokladany_cas = float(zakazka_detail.predpokladany_cas or 0)
@@ -172,31 +174,25 @@ def homepage_view(request):
                 ZamestnanecZakazka.objects.filter(zakazka=zakazka_detail, zamestnanec=request.user)
                 .aggregate(Sum('prideleno_hodin'))['prideleno_hodin__sum'] or 0
             )
-
         for v in relevantni_vykazy:
             if v.cas_od and v.cas_do:
                 dt_od = datetime.combine(v.den_prace, v.cas_od)
                 dt_do = datetime.combine(v.den_prace, v.cas_do)
                 diff = dt_do - dt_od
                 odpracovano_hodin += max(diff.total_seconds() / 3600.0, 0.0)
-
         zbyva_hodin = predpokladany_cas - odpracovano_hodin
         podil = (zbyva_hodin / predpokladany_cas) if predpokladany_cas > 0 else 1
-
         if podil <= 0:
             barva_zbyva = "danger"
         elif podil <= 0.1:
             barva_zbyva = "warning"
         else:
             barva_zbyva = "success"
-
         if predpokladany_cas > 0:
             progress_percent = min(100.0, (odpracovano_hodin / predpokladany_cas) * 100.0)
 
-    # --- výnosy (sazba × hodiny) pro admina – pouze informačně ----------------
-    proj_rate = None
-    rev_actual = None
-    rev_plan = None
+    # --- výnosy (sazba × hodiny) info pro admina (beze změny) ----------------
+    proj_rate = rev_actual = rev_plan = None
     if request.user.is_admin and zakazka_detail and getattr(zakazka_detail, "sazba_id", None):
         try:
             rate = Decimal(str(zakazka_detail.sazba.hodnota))
@@ -214,7 +210,7 @@ def homepage_view(request):
         except Exception:
             proj_rate = rev_actual = rev_plan = None
 
-    # --- historie -------------------------------------------------------------
+    # --- historie (beze změny) -----------------------------------------------
     historie_urednich_zaznamu = None
     historie_vykazu_prace = None
     if zakazka_detail:
@@ -232,25 +228,18 @@ def homepage_view(request):
         for priraz in zamestnanci_prirazeni:
             prideleno_dec = Decimal(str(priraz.prideleno_hodin or 0))
             odpracovano_dec = Decimal("0")
-
-            vqs = ZakazkaZamestnanec.objects.filter(
-                zakazka=zakazka_zam,
-                zamestnanec=priraz.zamestnanec
-            )
+            vqs = ZakazkaZamestnanec.objects.filter(zakazka=zakazka_zam, zamestnanec=priraz.zamestnanec)
             for v in vqs:
                 if v.cas_od and v.cas_do:
                     dt_od = datetime.combine(v.den_prace, v.cas_od)
                     dt_do = datetime.combine(v.den_prace, v.cas_do)
                     secs = max((dt_do - dt_od).total_seconds(), 0.0)
                     odpracovano_dec += Decimal(str(secs / 3600.0))
-
             zbyva_dec = prideleno_dec - odpracovano_dec
             podil = zbyva_dec / prideleno_dec if prideleno_dec > 0 else Decimal("1")
-
             barva = "danger" if podil <= Decimal("0") else ("warning" if podil <= Decimal("0.1") else "success")
             vidi = priraz.datum_prideleni and priraz.datum_prideleni <= now() and not priraz.skryta
             datum_ok = priraz.datum_prideleni and priraz.datum_prideleni <= now()
-
             prirazeni_vypocty.append({
                 'prirazeni': priraz,
                 'prideleno': float(prideleno_dec),
@@ -262,16 +251,33 @@ def homepage_view(request):
                 'datum_ok': datum_ok,
             })
 
-    # --- FINANCE ZAKÁZKY: rekapitulace (bez firemní režie) -------------------
+    # --- FINANCE ZAKÁZKY (pro detail) ----------------------------------------
     project_finance = None
     if request.user.is_admin and zakazka_detail:
         try:
-            project_finance = _project_finance_for(zakazka_detail)  # viz upravená funkce níže
+            project_finance = _project_finance_for(zakazka_detail)
         except Exception:
             project_finance = None
 
+    # --- NOVÉ: připnutí skutečného zisku na položky seznamu zakázek ----------
+    # aby šablona nemusela sahat na "privátní" názvy, nastavíme veřejné atributy
+    zakazky_render = zakazky_qs.order_by('zakazka_cislo')
+    if request.user.is_admin and show_fin == "1":
+        zakazky_render = list(zakazky_render)
+        for z in zakazky_render:
+            try:
+                pf = _project_finance_for(z)
+                val = pf.get("skut_zisk") if pf else None
+            except Exception:
+                val = None
+            z.skut_zisk = val  # může být None
+            if val is None:
+                z.skut_zisk_cls = "secondary"
+            else:
+                z.skut_zisk_cls = "success" if val >= Decimal("0") else "danger"
+
     return render(request, 'homepage.html', {
-        'zakazky': zakazky.order_by('zakazka_cislo'),
+        'zakazky': zakazky_render,
         'is_admin': request.user.is_admin,
         'zamestnanci': zamestnanci,
         'klienti': klienti,
@@ -282,6 +288,7 @@ def homepage_view(request):
         'subdodavatele': subdodavatele,
         'subdodavky': subdodavky,
         'aktivni': aktivni,
+        'show_fin': show_fin,  # <<< důležité pro šablonu
 
         'selected_zamestnanci_id': selected_zamestnanci_id,
         'zamestnanci_prirazeni': zamestnanci_prirazeni,
