@@ -200,6 +200,11 @@ class Zakazka(models.Model):
     plna_moc = models.BooleanField()
     hip = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="HIP")
     popis_zadani = models.TextField()
+    admin_poznamka = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Interní poznámka pouze pro admina."
+    )
     sjednana_cena = models.DecimalField(
         "Sjednaná cena",
         max_digits=18,

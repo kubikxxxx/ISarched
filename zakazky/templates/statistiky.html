@@ -226,4 +226,20 @@
 </div>
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 </body>
+<style>
+.table-payments {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table-payments th,
+.table-payments td {
+  width: 11%; /* 9 sloupců → ~11 % každý */
+}
+
+.table-payments th:first-child,
+.table-payments td:first-child {
+  width: 20%; /* jméno může být širší */
+}
+</style>
 </html>
