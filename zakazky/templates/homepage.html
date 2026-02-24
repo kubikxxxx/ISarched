@@ -119,10 +119,11 @@
                                             class="badge bg-warning text-dark"
                                             data-bs-toggle="tooltip"
                                             data-bs-placement="left"
-                                            title="{{ zakazka.admin_poznamka|escape }}"
+                                            data-bs-html="true"
+                                            title="{{ zakazka.admin_poznamka|escape|linebreaksbr }}"
                                             onclick="event.preventDefault(); event.stopPropagation();"
                                             style="cursor: help;"
-                                    >🛈</span>
+                                    >i</span>
                                 {% endif %}
                                 {% if is_admin and show_fin == '1' %}
                                     {% if zakazka.skut_zisk is not None %}
@@ -200,17 +201,22 @@
                 </ul>
 
             {% elif zakazka_detail %}
-                {% if is_admin %}
-                    <div class="mb-3 d-flex flex-wrap gap-2">
+                <div class="mb-3 d-flex flex-wrap gap-2">
+                    {% if is_admin %}
                         <a href="{% url 'edit_zakazka' zakazka_detail.id %}" class="btn btn-warning">Upravit</a>
-                        <a href="{% url 'zakazka_subdodavky' zakazka_detail.id %}" class="btn btn-info">Subdodávky</a>
+                    {% endif %}
+
+                    <a href="{% url 'zakazka_subdodavky' zakazka_detail.id %}" class="btn btn-info">Subdodávky</a>
+
+                    {% if is_admin %}
                         <button class="btn btn-outline-dark" type="button" data-bs-toggle="offcanvas"
                                 data-bs-target="#finOffcanvas" aria-controls="finOffcanvas">💰 Finance
                         </button>
+
                         <p class="mb-0 ms-auto"><strong>Subdodávky: Arched
                             ({{ arched_subs_count }}) {{ arched_subs_sum|format_cislo }} Kč</strong></p>
-                    </div>
-                {% endif %}
+                    {% endif %}
+                </div>
 
                 <div class="row">
                     <div class="col-md-12">
@@ -225,6 +231,22 @@
                                     <tr>
                                         <th>Název</th>
                                         <td>{{ zakazka_detail.nazev }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Klient</th>
+                                        <td>
+                                            {% if zakazka_detail.klient %}
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span>{{ zakazka_detail.klient.nazev }}</span>
+                                                    <a href="?detail_klient={{ zakazka_detail.klient.id }}&aktivni={{ aktivni }}&show_fin={{ show_fin }}"
+                                                       class="btn btn-sm btn-secondary">
+                                                        Detail
+                                                    </a>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                     <tr>
                                         <th>Termín</th>
@@ -260,6 +282,53 @@
                                         <td>{{ zakazka_detail.popis_zadani }}</td>
                                     </tr>
                                     <tr>
+                                        <th>Poznámka</th>
+                                        <td>
+                                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                                <div style="white-space: pre-wrap;">
+                                                    {% if zakazka_detail.poznamka_verejna %}
+                                                        {{ zakazka_detail.poznamka_verejna }}
+                                                    {% else %}
+                                                        <span class="text-muted">—</span>
+                                                    {% endif %}
+                                                </div>
+
+                                                {% if is_admin %}
+                                                    <button class="btn btn-sm btn-outline-primary"
+                                                            type="button"
+                                                            data-bs-toggle="collapse"
+                                                            data-bs-target="#poznamkaVerejnaEdit">
+                                                        Upravit
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+
+                                            {% if is_admin %}
+                                                <div class="collapse mt-2" id="poznamkaVerejnaEdit">
+                                                    <form method="post"
+                                                          action="{% url 'zakazka_poznamka_verejna_update' zakazka_detail.id %}">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="next"
+                                                               value="{{ request.get_full_path }}">
+                                                        <textarea name="poznamka_verejna" class="form-control" rows="4"
+                                                                  placeholder="Poznámka viditelná pro všechny…">{{ zakazka_detail.poznamka_verejna }}</textarea>
+                                                        <div class="mt-2 d-flex gap-2">
+                                                            <button type="submit" class="btn btn-sm btn-primary">
+                                                                Uložit
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-sm btn-outline-secondary"
+                                                                    data-bs-toggle="collapse"
+                                                                    data-bs-target="#poznamkaVerejnaEdit">
+                                                                Zrušit
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
                                         <th>Rozsah práce</th>
                                         <td>
                                             {% if rozsahy_prace %}
@@ -282,6 +351,7 @@
                                             {% else %}<em>Žádné</em>{% endif %}
                                         </td>
                                     </tr>
+
                                 </table>
                                 {% if is_admin %}
                                     <a href="{% url 'zakazka_rozsahy' zakazka_detail.id %}"
@@ -312,7 +382,14 @@
                             </div>
 
                             <div class="col-md-7">
-                                <h5>Výkazy práce</h5>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Výkazy práce</h5>
+
+                                    <a href="{% url 'vykaz_create' zakazka_detail.id %}"
+                                       class="btn btn-outline-primary btn-sm">
+                                        + Přidat výkaz
+                                    </a>
+                                </div>
                                 <p class="mb-1">
                                     {% if is_admin %}
                                         Přiděleno celkem: <strong>{{ predpokladany_cas|hodiny_hhmm }} h</strong>,
@@ -383,6 +460,21 @@
                                         <li class="list-group-item">Žádné záznamy.</li>
                                     {% endfor %}
                                 </ul>
+                                {% if vykazy_total_count %}
+                                    <div class="text-muted small mb-2">
+                                        Zobrazeno {{ vykazy_shown_count }} z {{ vykazy_total_count }} výkazů
+                                    </div>
+                                {% endif %}
+
+                                {% if vykazy_has_next %}
+                                    <a class="btn btn-outline-secondary w-100 mb-2"
+                                       href="?detail_zakazka={{ zakazka_detail.id }}&aktivni={{ aktivni }}&show_fin=
+
+
+                                               {{ show_fin }}{% if vykazy_zamestnanec %}&vykazy_zamestnanec={{ vykazy_zamestnanec }}{% endif %}&vykazy_page={{ vykazy_next_page }}">
+                                        Načíst další
+                                    </a>
+                                {% endif %}
 
                                 <a href="{% url 'vykaz_create' zakazka_detail.id %}"
                                    class="btn btn-outline-primary w-100">+ Přidat výkaz</a>
@@ -419,16 +511,16 @@
                                                 {{ project_finance.sazba|format_cislo }} Kč/h{% else %}–{% endif %}</td>
                                         </tr>
                                         <tr>
-                                            <th>Předpokládaný výnos</th>
-                                            <td class="num">{% if project_finance.predp_vynos is not None %}
-                                                {{ project_finance.predp_vynos|format_cislo }} Kč{% else %}
-                                                –{% endif %}</td>
-                                        </tr>
-                                        <tr>
                                             <th>Orientační náklad (hod)</th>
                                             <td class="num">{% if project_finance.orient_nakl_hod is not None %}
                                                 {{ project_finance.orient_nakl_hod|format_cislo }} Kč/h{% else %}
                                                 –{% endif %}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Subdodávky (Arched) – předpoklad</th>
+                                            <td class="num">{{ project_finance.predp_subdodavky_arched|format_cislo }}
+                                                Kč
+                                            </td>
                                         </tr>
                                         <tr>
                                             <th>Předpokládaný náklad</th>
@@ -803,12 +895,12 @@
 </script>
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
 <script>
-  (function () {
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    tooltipTriggerList.map(function (el) {
-      return new bootstrap.Tooltip(el)
-    })
-  })();
+    (function () {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        tooltipTriggerList.map(function (el) {
+            return new bootstrap.Tooltip(el)
+        })
+    })();
 </script>
 <script>
     (function () {

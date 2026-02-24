@@ -2,89 +2,440 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-    <meta charset="UTF-8">
-    <title>Správa subdodávek</title>
-    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
-    <style>
-        body {
-            padding: 20px;
-        }
+  <meta charset="UTF-8">
+  <title>Správa subdodávek</title>
+  <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+  <style>
+    body { padding: 16px; background: #f6f7f9; }
 
-        .form-section {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: .5rem;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-    </style>
+    .page-head{
+      display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+      margin-bottom: 12px;
+    }
+
+    .sub-card { border: 1px solid #e6e8eb; transition: filter .15s ease, box-shadow .15s ease, border-color .15s ease; }
+    .sub-card .card-header{ padding: .55rem .75rem; }
+    .sub-card .card-body{ padding: .75rem; }
+
+    .sub-title{
+      font-weight: 650;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      max-width: 100%;
+    }
+
+    .small-muted { color: #6c757d; font-size: .85rem; }
+    textarea.resize-y { resize: vertical; }
+
+    /* INACTIVE: šedne jen body, header zůstává normální */
+    .sub-card.inactive .card-body{
+      opacity: .55;
+      filter: grayscale(.15);
+    }
+
+    /* ACTIVE: MODRÁ */
+    .sub-card.active{
+      border-color:#9ec5fe;              /* bootstrap primary-200 */
+      box-shadow: 0 .35rem .7rem rgba(0,0,0,.08);
+    }
+    .sub-card.active .card-header{
+      background:#e7f1ff;                /* light blue */
+      border-bottom-color:#cfe2ff;
+    }
+
+    /* výrazný "Aktivní" pill */
+    .active-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:.45rem;
+      padding:.22rem .65rem;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: .85rem;
+      user-select:none;
+      border: 1px solid transparent;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .active-pill.on{
+      background:#cfe2ff;                /* blue pill */
+      color:#084298;                      /* dark blue text */
+      border-color:#9ec5fe;
+    }
+    .active-pill.off{
+      background:#f1f3f5;
+      color:#6c757d;
+      border-color:#e2e5e9;
+    }
+    .active-dot{
+      width:10px; height:10px; border-radius:999px; display:inline-block;
+      background: currentColor;
+      opacity: .9;
+    }
+
+    /* switch trochu větší */
+    .form-switch .form-check-input{
+      width: 2.75em;
+      height: 1.35em;
+      margin-left: .25rem;
+      cursor: pointer;
+    }
+
+    /* sticky footer bar */
+    .sticky-actions {
+      position: sticky;
+      bottom: 0;
+      background: rgba(246,247,249,.92);
+      backdrop-filter: blur(6px);
+      padding: 10px 0;
+      margin-top: 12px;
+      border-top: 1px solid #e6e8eb;
+      z-index: 10;
+    }
+
+    /* top actions */
+    .top-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:.5rem;
+      margin: 8px 0 12px;
+    }
+  </style>
 </head>
 <body>
-<div class="container">
-    <h2 class="mb-4">Přiřazení subdodávek pro zakázku: <strong>{{ zakazka.nazev }}</strong></h2>
+<div class="container-fluid px-2 px-md-3">
 
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
+  <div class="page-head">
+    <div>
+      <h4 class="mb-0">Subdodávky</h4>
+      <div class="text-muted">
+        Zakázka: <strong>{{ zakazka.nazev }}</strong>
+      </div>
+    </div>
 
-    <form method="post">
-        {% csrf_token %}
-        {% for s in subdodavky %}
-            {% with a=assigned|get_subdodavka:s %}
-                <div class="form-section">
-                    <div class="mb-2 fw-bold">{{ s.nazev }}</div>
+    <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-outline-secondary btn-sm">
+      ← Zpět na zakázku
+    </a>
+  </div>
 
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" name="subdodavka" value="{{ s.id }}" id="check_{{ s.id }}"
-                               {% if a %}checked{% endif %}>
-                        <label class="form-check-label" for="check_{{ s.id }}">Aktivní</label>
-                    </div>
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} py-2">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
 
-                    <div class="mb-3">
-                        <label for="subdodavatel_{{ s.id }}" class="form-label">Subdodavatel:</label>
-                        <select class="form-select" name="subdodavatel_{{ s.id }}" id="subdodavatel_{{ s.id }}">
-                            <option value="">-- Vyberte --</option>
-                            {% for sub in subdodavatele %}
-                                <option value="{{ sub.id }}" {% if a and a.subdodavatel.id == sub.id %}selected{% endif %}>
-                                    {{ sub.jmeno }} {{ sub.prijmeni }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
+  <form method="post">
+    {% csrf_token %}
 
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="cena_{{ s.id }}" class="form-label">Cena:</label>
-                            <input type="text" class="form-control" name="cena_{{ s.id }}" id="cena_{{ s.id }}" value="{% if a %}{{ a.cena }}{% endif %}">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="navyseni_{{ s.id }}" class="form-label">Navýšení (%):</label>
-                            <input type="text" class="form-control" name="navyseni_{{ s.id }}" id="navyseni_{{ s.id }}" value="{% if a %}{{ a.navyseni }}{% endif %}">
-                        </div>
-                    </div>
+    <!-- TLAČÍTKA NAHOŘE -->
+    <div class="top-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Uložit</button>
+      <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-outline-secondary btn-sm">Zpět</a>
+    </div>
 
-                    <div class="mb-2">
-                        <label class="form-check">
-                            <input class="form-check-input" type="radio" name="fakturace_{{ s.id }}" value="klient" {% if a and a.fakturuje_klientovi %}checked{% endif %}>
-                            Fakturuje klientovi
-                        </label>
-                        <label class="form-check">
-                            <input class="form-check-input" type="radio" name="fakturace_{{ s.id }}" value="arched" {% if a and a.fakturuje_arched %}checked{% endif %}>
-                            Fakturuje Arched
-                        </label>
-                    </div>
+    <div class="row g-3">
+      {% for s in subdodavky %}
+        {% with a=assigned|get_subdodavka:s %}
+          <div class="col-12 col-md-6 col-xl-4">
+
+            <div class="card h-100 sub-card {% if a %}active{% else %}inactive{% endif %}" data-subcard="{{ s.id }}">
+
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="sub-title">{{ s.nazev }}</div>
+
+                <div class="d-flex align-items-center gap-2">
+                  <span class="active-pill {% if a %}on{% else %}off{% endif %}" data-active-pill="{{ s.id }}">
+                    <span class="active-dot"></span>
+                    <span data-active-pill-text="{{ s.id }}">{% if a %}AKTIVNÍ{% else %}NEAKTIVNÍ{% endif %}</span>
+                  </span>
+
+                  <div class="form-check form-switch m-0">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="subdodavka"
+                           value="{{ s.id }}"
+                           id="check_{{ s.id }}"
+                           data-active-toggle="{{ s.id }}"
+                           {% if a %}checked{% endif %}>
+                  </div>
                 </div>
-            {% endwith %}
-        {% endfor %}
+              </div>
 
-        <div class="d-flex">
-            <button type="submit" class="btn btn-primary me-2">Uložit</button>
-            <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-secondary">Zpět</a>
-        </div>
-    </form>
+              <div class="card-body">
+
+                <!-- Subdodavatel -->
+                <div class="mb-2">
+                  <label for="subdodavatel_{{ s.id }}" class="form-label small mb-1">Subdodavatel</label>
+                  <select class="form-select form-select-sm"
+                          name="subdodavatel_{{ s.id }}"
+                          id="subdodavatel_{{ s.id }}">
+                    <option value="">-- Vyberte --</option>
+                    {% for sub in subdodavatele %}
+                      <option value="{{ sub.id }}" {% if a and a.subdodavatel.id == sub.id %}selected{% endif %}>
+                        {{ sub.jmeno }} {{ sub.prijmeni }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <!-- Fakturace -->
+                <div class="mb-2">
+                  <div class="small fw-semibold mb-1">Fakturace</div>
+                  <div class="d-flex gap-3 flex-wrap">
+                    <label class="form-check small m-0">
+                      <input class="form-check-input"
+                             type="radio"
+                             name="fakturace_{{ s.id }}"
+                             value="klient"
+                             {% if a %}
+                               {% if a.fakturuje_klientovi %}checked{% endif %}
+                             {% else %}
+                               checked
+                             {% endif %}>
+                      Klientovi
+                    </label>
+
+                    <label class="form-check small m-0">
+                      <input class="form-check-input"
+                             type="radio"
+                             name="fakturace_{{ s.id }}"
+                             value="arched"
+                             {% if a and a.fakturuje_arched %}checked{% endif %}>
+                      Arched
+                    </label>
+                  </div>
+                </div>
+
+                <hr class="my-2">
+
+                <!-- Ceny -->
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label for="cena_predp_{{ s.id }}" class="form-label small mb-1">Předpoklad</label>
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           name="cena_predp_{{ s.id }}"
+                           id="cena_predp_{{ s.id }}"
+                           placeholder="12 000"
+                           value="{% if a %}{{ a.cena_predpoklad }}{% endif %}">
+                  </div>
+                  <div class="col-6">
+                    <label for="cena_{{ s.id }}" class="form-label small mb-1">Skutečnost</label>
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           name="cena_{{ s.id }}"
+                           id="cena_{{ s.id }}"
+                           placeholder="11 500"
+                           value="{% if a %}{{ a.cena }}{% endif %}">
+                  </div>
+                </div>
+                <div class="small-muted mb-2">Předpoklad → do předpokladů financí, Skutečnost → do skutečnosti.</div>
+
+                <!-- Termín + Objednatel -->
+                <div class="row g-2 mb-2">
+                  <div class="col-12">
+                    <label for="termin_{{ s.id }}" class="form-label small mb-1">Termín (textově)</label>
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           name="termin_{{ s.id }}"
+                           id="termin_{{ s.id }}"
+                           placeholder="např. do 15.3. / 2 týdny"
+                           value="{% if a %}{{ a.termin_text }}{% endif %}">
+                  </div>
+
+                  <div class="col-12">
+                    <label for="objednatel_{{ s.id }}" class="form-label small mb-1">Objednatel</label>
+                    <select class="form-select form-select-sm"
+                            name="objednatel_{{ s.id }}"
+                            id="objednatel_{{ s.id }}">
+                      {% with o=a.objednatel|default:"klient" %}
+                        <option value="klient" {% if o == "klient" %}selected{% endif %}>Klient</option>
+                        <option value="arched" {% if o == "arched" %}selected{% endif %}>Arched</option>
+                        <option value="elias"  {% if o == "elias" %}selected{% endif %}>Ing. arch. David Eliáš</option>
+                      {% endwith %}
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Zadáno + datum -->
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label for="zadano_stav_{{ s.id }}" class="form-label small mb-1">Zadáno</label>
+                    <select class="form-select form-select-sm"
+                            name="zadano_stav_{{ s.id }}"
+                            id="zadano_stav_{{ s.id }}"
+                            data-zadano-select="{{ s.id }}">
+                      {% with st=a.zadano_stav|default:"nezadano" %}
+                        <option value="nezadano" {% if st == "nezadano" %}selected{% endif %}>Nezadáno</option>
+                        <option value="zadano"   {% if st == "zadano" %}selected{% endif %}>Zadáno</option>
+                        <option value="hotovo"   {% if st == "hotovo" %}selected{% endif %}>Hotovo</option>
+                      {% endwith %}
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label for="zadano_datum_{{ s.id }}" class="form-label small mb-1">Datum</label>
+                    <input type="date"
+                           class="form-control form-control-sm"
+                           name="zadano_datum_{{ s.id }}"
+                           id="zadano_datum_{{ s.id }}"
+                           data-zadano-date="{{ s.id }}"
+                           value="{% if a and a.zadano_datum %}{{ a.zadano_datum|date:'Y-m-d' }}{% endif %}">
+                  </div>
+                </div>
+
+                <!-- Rozsah + modal -->
+                <div class="mb-1">
+                  <label class="form-label small mb-1">Rozsah</label>
+                  <div class="d-flex gap-2">
+                    <textarea class="form-control form-control-sm resize-y"
+                              rows="2"
+                              name="rozsah_{{ s.id }}"
+                              id="rozsah_src_{{ s.id }}"
+                              placeholder="Rozsah…">{% if a %}{{ a.rozsah }}{% endif %}</textarea>
+
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            title="Upravit v okně"
+                            data-bs-toggle="modal"
+                            data-bs-target="#rozsahModal_{{ s.id }}"
+                            data-rozsah-open="{{ s.id }}">
+                      ↗
+                    </button>
+                  </div>
+
+                  <div class="modal fade" id="rozsahModal_{{ s.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Rozsah – {{ s.nazev }}</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zavřít"></button>
+                        </div>
+                        <div class="modal-body">
+                          <textarea class="form-control" rows="12" id="rozsah_modal_{{ s.id }}"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zrušit</button>
+                          <button type="button" class="btn btn-primary" data-rozsah-save="{{ s.id }}">Uložit</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            </div>
+          </div>
+        {% endwith %}
+      {% endfor %}
+    </div>
+
+    <!-- TLAČÍTKA DOLE -->
+    <div class="sticky-actions">
+      <div class="d-flex justify-content-end gap-2">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <a href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}" class="btn btn-outline-secondary">Zpět</a>
+      </div>
+    </div>
+
+  </form>
 </div>
+
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+
+<script>
+(function(){
+  function isActive(id){
+    const chk = document.getElementById('check_' + id);
+    return !!(chk && chk.checked);
+  }
+
+  function setPill(id, enabled){
+    const pill = document.querySelector('[data-active-pill="'+id+'"]');
+    const txt  = document.querySelector('[data-active-pill-text="'+id+'"]');
+    if(!pill || !txt) return;
+
+    pill.classList.toggle('on', enabled);
+    pill.classList.toggle('off', !enabled);
+    txt.textContent = enabled ? 'AKTIVNÍ' : 'NEAKTIVNÍ';
+  }
+
+  function refreshZadanoDate(id){
+    const sel = document.querySelector('[data-zadano-select="'+id+'"]');
+    const inp = document.querySelector('[data-zadano-date="'+id+'"]');
+    if(!sel || !inp) return;
+
+    const active = isActive(id);
+    const on = active && (sel.value === 'zadano');
+
+    inp.disabled = !on;
+    inp.style.opacity = on ? '1' : '0.5';
+    if(!on) inp.value = '';
+  }
+
+  function setCardState(id){
+    const card = document.querySelector('[data-subcard="'+id+'"]');
+    const chk  = document.querySelector('[data-active-toggle="'+id+'"]');
+    if(!card || !chk) return;
+
+    const enabled = chk.checked;
+
+    card.classList.toggle('inactive', !enabled);
+    card.classList.toggle('active', enabled);
+    setPill(id, enabled);
+
+    // disable all controls inside card except:
+    // - the active checkbox itself
+    // - anything inside .modal (aby šlo zavřít/uložit rozsah)
+    const elems = card.querySelectorAll('input, select, textarea, button');
+    elems.forEach(el => {
+      if(el === chk) return;
+      if(el.closest('.modal')) return;
+      el.disabled = !enabled;
+    });
+
+    // datum jen když "zadano"
+    refreshZadanoDate(id);
+  }
+
+  // init cards
+  document.querySelectorAll('[data-active-toggle]').forEach(chk => {
+    const id = chk.getAttribute('data-active-toggle');
+    setCardState(id);
+    chk.addEventListener('change', () => setCardState(id));
+  });
+
+  // zadano select change
+  document.querySelectorAll('[data-zadano-select]').forEach(sel => {
+    const id = sel.getAttribute('data-zadano-select');
+    sel.addEventListener('change', () => refreshZadanoDate(id));
+  });
+
+  // modal: open = copy; save = write back
+  document.querySelectorAll('[data-rozsah-open]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-rozsah-open');
+      const src = document.getElementById('rozsah_src_' + id);
+      const modal = document.getElementById('rozsah_modal_' + id);
+      if(src && modal) modal.value = src.value || '';
+    });
+  });
+
+  document.querySelectorAll('[data-rozsah-save]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-rozsah-save');
+      const src = document.getElementById('rozsah_src_' + id);
+      const modalTa = document.getElementById('rozsah_modal_' + id);
+      if(src && modalTa) src.value = modalTa.value || '';
+
+      const modalEl = document.getElementById('rozsahModal_' + id);
+      if(modalEl){
+        const m = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        m.hide();
+      }
+    });
+  });
+})();
+</script>
+
 </body>
 </html>

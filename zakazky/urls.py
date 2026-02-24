@@ -1,4 +1,5 @@
 from django.urls import path
+
 from .views import login_view, logout_view, homepage_view, create_zakazka_view, employee_create_view, \
     client_create_view, delete_zakazka_view, edit_zakazka_view, client_edit_view, client_note_create_view, \
     zakazka_subdodavky_view, create_subdodavatel_view, create_subdodavka_view, uredni_zapis_create_view, \
@@ -7,7 +8,7 @@ from .views import login_view, logout_view, homepage_view, create_zakazka_view, 
     over_dph_spolehlivost, edit_subdodavatel_view, edit_employee_view, toggle_viditelnost_view, historie_zapisu_view, \
     vykaz_edit_view, vykaz_history_view, zakazka_rozsahy_view, zamestnanec_timesheet_view, uzavrit_mesic_view, \
     otevrit_mesic_view, ulozit_plan_mesice_view, employee_weekly_plan_view, statistiky_view, overhead_list_create_view, \
-    overhead_edit_view
+    overhead_edit_view, zakazka_poznamka_verejna_update_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -51,7 +52,8 @@ urlpatterns = [
     path("statistiky/", login_required(statistiky_view), name="statistiky"),
     path("overhead/", login_required(overhead_list_create_view), name="overhead_list"),
     path("overhead/<int:rate_id>/edit/", login_required(overhead_edit_view), name="overhead_edit"),
-
+    path("zakazka/<int:zakazka_id>/poznamka-verejna/", zakazka_poznamka_verejna_update_view,
+         name="zakazka_poznamka_verejna_update"),
 ]
 
 

@@ -1,6 +1,6 @@
 # views.py
 from collections import defaultdict
-
+from django.core.paginator import Paginator
 from django.apps import apps
 from django.db import transaction
 from django.forms import modelformset_factory
@@ -94,7 +94,6 @@ def _fmt_hhmm_from_hours(h: Decimal) -> str:
 def homepage_view(request):
     # --- levý sloupec: seznam zakázek ---------------------------------------
     aktivni = "1"
-    # NOVÉ: zda zobrazovat zisk u zakázek (jen pro admina)
     show_fin = "1" if (request.user.is_admin and request.GET.get("show_fin", "0") == "1") else "0"
 
     if request.user.is_admin:
@@ -140,13 +139,36 @@ def homepage_view(request):
     uredni_zapisy = UredniZapis.objects.filter(zakazka=zakazka_detail) if zakazka_detail else None
     rozsahy_prace = RozsahPrace.objects.filter(zakazka=zakazka_detail) if zakazka_detail else None
 
+    # --- VÝKAZY (NOVĚ: stránkování 25) ---------------------------------------
     zamestnanec_filter_id = request.GET.get("vykazy_zamestnanec")
+
     vykazy = None
+    vykazy_has_next = False
+    vykazy_next_page = None
+    vykazy_total_count = 0
+    vykazy_shown_count = 0
+    vykazy_page = 1
+
     if zakazka_detail:
         vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
         if zamestnanec_filter_id:
             vykazy_qs = vykazy_qs.filter(zamestnanec_id=zamestnanec_filter_id)
-        vykazy = vykazy_qs.select_related('zamestnanec').order_by('-den_prace')
+
+        vykazy_qs = vykazy_qs.select_related('zamestnanec').order_by('-den_prace', '-cas_od', '-id')
+
+        try:
+            vykazy_page = int(request.GET.get("vykazy_page", "1") or 1)
+        except Exception:
+            vykazy_page = 1
+
+        paginator = Paginator(vykazy_qs, 25)
+        page_obj = paginator.get_page(vykazy_page)
+
+        vykazy = page_obj.object_list
+        vykazy_has_next = page_obj.has_next()
+        vykazy_next_page = page_obj.next_page_number() if vykazy_has_next else None
+        vykazy_total_count = paginator.count
+        vykazy_shown_count = page_obj.end_index()
 
     # --- subdodávky fakturované Arched ---------------------------------------
     arched_subs_count = 0
@@ -164,22 +186,24 @@ def homepage_view(request):
     predpokladany_cas = 0.0
 
     if zakazka_detail:
-        vykazy_qs = zakazka_detail.zakazkazamestnanec_set.all()
+        vykazy_qs_all = zakazka_detail.zakazkazamestnanec_set.all()
         if request.user.is_admin:
-            relevantni_vykazy = vykazy_qs
+            relevantni_vykazy = vykazy_qs_all
             predpokladany_cas = float(zakazka_detail.predpokladany_cas or 0)
         else:
-            relevantni_vykazy = vykazy_qs.filter(zamestnanec=request.user)
+            relevantni_vykazy = vykazy_qs_all.filter(zamestnanec=request.user)
             predpokladany_cas = float(
                 ZamestnanecZakazka.objects.filter(zakazka=zakazka_detail, zamestnanec=request.user)
                 .aggregate(Sum('prideleno_hodin'))['prideleno_hodin__sum'] or 0
             )
+
         for v in relevantni_vykazy:
             if v.cas_od and v.cas_do:
                 dt_od = datetime.combine(v.den_prace, v.cas_od)
                 dt_do = datetime.combine(v.den_prace, v.cas_do)
                 diff = dt_do - dt_od
                 odpracovano_hodin += max(diff.total_seconds() / 3600.0, 0.0)
+
         zbyva_hodin = predpokladany_cas - odpracovano_hodin
         podil = (zbyva_hodin / predpokladany_cas) if predpokladany_cas > 0 else 1
         if podil <= 0:
@@ -191,7 +215,7 @@ def homepage_view(request):
         if predpokladany_cas > 0:
             progress_percent = min(100.0, (odpracovano_hodin / predpokladany_cas) * 100.0)
 
-    # --- výnosy (sazba × hodiny) info pro admina (beze změny) ----------------
+    # --- výnosy (sazba × hodiny) info pro admina ------------------------------
     proj_rate = rev_actual = rev_plan = None
     if request.user.is_admin and zakazka_detail and getattr(zakazka_detail, "sazba_id", None):
         try:
@@ -210,7 +234,7 @@ def homepage_view(request):
         except Exception:
             proj_rate = rev_actual = rev_plan = None
 
-    # --- historie (beze změny) -----------------------------------------------
+    # --- historie -------------------------------------------------------------
     historie_urednich_zaznamu = None
     historie_vykazu_prace = None
     if zakazka_detail:
@@ -260,7 +284,6 @@ def homepage_view(request):
             project_finance = None
 
     # --- NOVÉ: připnutí skutečného zisku na položky seznamu zakázek ----------
-    # aby šablona nemusela sahat na "privátní" názvy, nastavíme veřejné atributy
     zakazky_render = zakazky_qs.order_by('zakazka_cislo')
     if request.user.is_admin and show_fin == "1":
         zakazky_render = list(zakazky_render)
@@ -270,11 +293,8 @@ def homepage_view(request):
                 val = pf.get("skut_zisk") if pf else None
             except Exception:
                 val = None
-            z.skut_zisk = val  # může být None
-            if val is None:
-                z.skut_zisk_cls = "secondary"
-            else:
-                z.skut_zisk_cls = "success" if val >= Decimal("0") else "danger"
+            z.skut_zisk = val
+            z.skut_zisk_cls = "secondary" if val is None else ("success" if val >= Decimal("0") else "danger")
 
     return render(request, 'homepage.html', {
         'zakazky': zakazky_render,
@@ -288,7 +308,7 @@ def homepage_view(request):
         'subdodavatele': subdodavatele,
         'subdodavky': subdodavky,
         'aktivni': aktivni,
-        'show_fin': show_fin,  # <<< důležité pro šablonu
+        'show_fin': show_fin,
 
         'selected_zamestnanci_id': selected_zamestnanci_id,
         'zamestnanci_prirazeni': zamestnanci_prirazeni,
@@ -304,7 +324,14 @@ def homepage_view(request):
         'arched_subs_count': arched_subs_count,
         'arched_subs_sum': arched_subs_sum,
 
+        # výkazy + pagination
         'vykazy': vykazy,
+        'vykazy_has_next': vykazy_has_next,
+        'vykazy_next_page': vykazy_next_page,
+        'vykazy_total_count': vykazy_total_count,
+        'vykazy_shown_count': vykazy_shown_count,
+        'vykazy_page': vykazy_page,
+
         'zamestnanci_v_zakazce': ZakazkaZamestnanec.objects.filter(zakazka=zakazka_detail)
             .values_list('zamestnanec__id', 'zamestnanec__jmeno', 'zamestnanec__prijmeni').distinct(),
         'vykazy_zamestnanec': zamestnanec_filter_id,
@@ -418,9 +445,39 @@ def delete_zakazka_view(request, zakazka_id):
 @login_required
 def zakazka_subdodavky_view(request, zakazka_id):
     zakazka = get_object_or_404(Zakazka, id=zakazka_id)
-    subdodavky = Subdodavka.objects.all()
+
+    # pokud není admin → musí být přiřazen k zakázce (viditelně)
+    if not request.user.is_admin:
+        allowed = ZamestnanecZakazka.objects.filter(
+            zakazka=zakazka,
+            zamestnanec=request.user,
+            datum_prideleni__lte=now(),
+            skryta=False
+        ).exists()
+        if not allowed:
+            return HttpResponseForbidden("Nemáte oprávnění zobrazit subdodávky této zakázky.")
+
+    # data pro obě varianty
+    assigned_qs = (
+        ZakazkaSubdodavka.objects
+        .filter(zakazka=zakazka)
+        .select_related("subdodavka", "subdodavatel")
+        .order_by("subdodavka__nazev", "id")
+    )
+
+    # --- READ ONLY pro ne-adminy --------------------------------------------
+    if not request.user.is_admin:
+        return render(request, "zakazka_subdodavky_readonly.html", {
+            "zakazka": zakazka,
+            "assigned_rows": assigned_qs,  # jen aktivní (existující vazby)
+        })
+
+    # --- ADMIN EDIT (tvoje stávající) ---------------------------------------
+    subdodavky = list(Subdodavka.objects.all())
     subdodavatele = Subdodavatel.objects.all()
-    assigned = ZakazkaSubdodavka.objects.filter(zakazka=zakazka)
+
+    # prefilling pro admin šablonu (ponechávám kompatibilitu s tvým filtrem get_subdodavka)
+    assigned = assigned_qs
 
     if request.method == "POST":
         ZakazkaSubdodavka.objects.filter(zakazka=zakazka).delete()
@@ -428,32 +485,72 @@ def zakazka_subdodavky_view(request, zakazka_id):
         selected_ids = request.POST.getlist("subdodavka")
         for sid in selected_ids:
             sub_id = int(sid)
+
             subdodavatel_id = request.POST.get(f"subdodavatel_{sub_id}")
-            cena_raw = request.POST.get(f"cena_{sub_id}")
-            navyseni_raw = request.POST.get(f"navyseni_{sub_id}")
             fakturace = request.POST.get(f"fakturace_{sub_id}")  # "klient" | "arched"
 
-            cena = _to_decimal(cena_raw)
-            navyseni = _to_decimal(navyseni_raw)
+            cena_predp_raw = (request.POST.get(f"cena_predp_{sub_id}") or "").strip()
+            cena_skut_raw  = (request.POST.get(f"cena_{sub_id}") or "").strip()
 
-            # Validace vstupů
-            if not subdodavatel_id or cena is None or navyseni is None or fakturace not in ("klient", "arched"):
-                messages.error(
-                    request,
-                    f"Chyba u subdodávky ID {sub_id}: vyplňte subdodavatele, cenu a navýšení (číslo)."
-                )
+            termin_text = (request.POST.get(f"termin_{sub_id}") or "").strip()
+            rozsah_text = (request.POST.get(f"rozsah_{sub_id}") or "").strip()
+
+            zadano_stav = request.POST.get(f"zadano_stav_{sub_id}", "nezadano")
+            zadano_datum_raw = (request.POST.get(f"zadano_datum_{sub_id}") or "").strip()
+            objednatel = request.POST.get(f"objednatel_{sub_id}", "klient")
+
+            # základní validace
+            if not subdodavatel_id or fakturace not in ("klient", "arched"):
+                messages.error(request, f"Chyba u subdodávky ID {sub_id}: vyplňte subdodavatele a fakturaci.")
                 return redirect(request.path)
 
-            # (volitelné) zaokrouhlení na 2 desetinná místa
-            cena = cena.quantize(Decimal("0.01"))
-            navyseni = navyseni.quantize(Decimal("0.01"))
+            if zadano_stav not in ("nezadano", "zadano", "hotovo"):
+                messages.error(request, f"Chyba u subdodávky ID {sub_id}: neplatný stav zadáno.")
+                return redirect(request.path)
+
+            if objednatel not in ("klient", "arched", "elias"):
+                messages.error(request, f"Chyba u subdodávky ID {sub_id}: neplatný objednatel.")
+                return redirect(request.path)
+
+            zadano_datum = None
+            if zadano_stav == "zadano":
+                if not zadano_datum_raw:
+                    messages.error(request, f"Chyba u subdodávky ID {sub_id}: pro 'Zadáno' vyplň datum.")
+                    return redirect(request.path)
+                try:
+                    zadano_datum = dt.date.fromisoformat(zadano_datum_raw)
+                except Exception:
+                    messages.error(request, f"Chyba u subdodávky ID {sub_id}: datum musí být YYYY-MM-DD.")
+                    return redirect(request.path)
+
+            if cena_predp_raw == "" and cena_skut_raw == "":
+                messages.error(request, f"Chyba u subdodávky ID {sub_id}: vyplňte alespoň jednu cenu.")
+                return redirect(request.path)
+
+            cena_predp = _to_decimal(cena_predp_raw, allow_empty=True)
+            cena_skut  = _to_decimal(cena_skut_raw, allow_empty=True)
+            if cena_predp is None or cena_skut is None:
+                messages.error(request, f"Chyba u subdodávky ID {sub_id}: cena není číslo.")
+                return redirect(request.path)
+
+            cena_predp = Decimal(cena_predp).quantize(Decimal("0.01"))
+            cena_skut  = Decimal(cena_skut).quantize(Decimal("0.01"))
 
             ZakazkaSubdodavka.objects.create(
                 zakazka=zakazka,
                 subdodavka_id=sub_id,
                 subdodavatel_id=int(subdodavatel_id),
-                cena=cena,
-                navyseni=navyseni,
+
+                cena_predpoklad=cena_predp,
+                cena=cena_skut,
+                navyseni=Decimal("0.00"),
+
+                termin_text=termin_text,
+                zadano_stav=zadano_stav,
+                zadano_datum=zadano_datum,
+                objednatel=objednatel,
+                rozsah=rozsah_text,
+
                 fakturuje_klientovi=(fakturace == "klient"),
                 fakturuje_arched=(fakturace == "arched"),
             )
@@ -1634,6 +1731,8 @@ def statistiky_view(request):
 
         month_tables.sort(key=lambda t: getattr(t["zakazka"], "zakazka_cislo", "") or "")
 
+        projects_total_zisk = sum((t["total_zisk"] for t in month_tables), ZERO).quantize(Decimal("0.01"))
+
     return render(request, "statistiky.html", {
         "scope": scope,
         "ym": ym_for_template,
@@ -1655,6 +1754,7 @@ def statistiky_view(request):
         "closed_projects": closed_projects,
 
         "projects_month_tables": month_tables,
+        "projects_total_zisk": projects_total_zisk,
     })
 
 
@@ -1705,14 +1805,18 @@ def _as_dec(val, default="0"):
 def _project_finance_for(zakazka) -> dict | None:
     """
     Finance pro off-canvas:
+
       PŘEDPOKLAD:
-        - predp_cas * sazba  (výnos)
-        - predp_cas * orient_nakl_hod (náklad)
-        - zisk = výnos - náklad
+        - predp_vynos = predp_cas * sazba
+        - predp_naklad = predp_cas * orient_nakl_hod
+        - NOVĚ: predp_subdodavky_arched = Σ subdodávky(fakturuje_arched) z pole cena_predpoklad
+        - NOVĚ: predp_hruby_vynos = (sjednaná cena pokud je, jinak predp_vynos) − predp_subdodavky_arched
+        - NOVĚ: predp_zisk = predp_hruby_vynos − predp_naklad (pokud je predp_naklad k dispozici)
+
       SKUTEČNOST:
-        - hrubý výnos = sjednaná_cena − subdodávky (Arched)
+        - hrubý výnos = sjednaná_cena − subdodávky (Arched) ze skutečné ceny (cena)
         - náklady = Σ hodiny * (efektivní_sazba_hod_daného_měsíce + osobní_režie/hod) + cestovné
-        (!!! firemní režie je zcela vynechána !!!)
+        (firemní režie je zcela vynechána)
     """
     if not zakazka:
         return None
@@ -1792,14 +1896,30 @@ def _project_finance_for(zakazka) -> dict | None:
     if predp_vynos is not None and predp_naklad is not None:
         predp_zisk = predp_vynos - predp_naklad
 
-    # --- SKUTEČNOST -----------------------------------------------------------
-    # sjednaná cena: explicitně, jinak sazba * PŘEDPOKLÁDANÉ hodiny (informačně)
+    # --- SKUTEČNOST: sjednaná cena (nejdřív si ji zjistíme, ať ji můžeme použít i pro PŘEDPOKLAD) ---
     sjednana_cena = None
     if getattr(zakazka, "sjednana_cena", None) is not None:
         sjednana_cena = _as_dec(zakazka.sjednana_cena, None)
     elif sazba is not None and predp_cas and predp_cas > ZERO:
         sjednana_cena = (sazba * predp_cas).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+    # --- PŘEDPOKLAD: subdodávky Arched z pole cena_predpoklad -----------------
+    # (používá se do PŘEDPOKLADU financí)
+    subdodavky_arched_plan = ZakazkaSubdodavka.objects.filter(
+        zakazka=zakazka, fakturuje_arched=True
+    ).aggregate(s=Sum("cena_predpoklad"))["s"] or ZERO
+
+    predp_base_vynos = sjednana_cena if sjednana_cena is not None else predp_vynos
+
+    predp_hruby_vynos = None
+    if predp_base_vynos is not None:
+        predp_hruby_vynos = predp_base_vynos - _as_dec(subdodavky_arched_plan, "0")
+
+    # predp_zisk chceme mít analogicky "po subdodávkách"
+    if predp_hruby_vynos is not None and predp_naklad is not None:
+        predp_zisk = predp_hruby_vynos - predp_naklad
+
+    # --- SKUTEČNOST -----------------------------------------------------------
     logs = (
         ZakazkaZamestnanec.objects
         .filter(zakazka=zakazka)
@@ -1852,14 +1972,14 @@ def _project_finance_for(zakazka) -> dict | None:
             }
             per_emp_tmp[emp.id] = agg
 
-        agg["hod"]        += h
-        agg["cestovne"]   += km * rate_km
-        agg["wages"]      += h * rate_h
-        agg["oh_personal"]+= h * emp_oh
+        agg["hod"]         += h
+        agg["cestovne"]    += km * rate_km
+        agg["wages"]       += h * rate_h
+        agg["oh_personal"] += h * emp_oh
 
     skut_hodin = sum(hours_by_emp.values(), ZERO)
 
-    # subdodávky (Arched)
+    # subdodávky (Arched) – SKUTEČNOST: ze skutečné ceny (cena)
     subdodavky_arched = ZakazkaSubdodavka.objects.filter(
         zakazka=zakazka, fakturuje_arched=True
     ).aggregate(s=Sum("cena"))["s"] or ZERO
@@ -1900,11 +2020,17 @@ def _project_finance_for(zakazka) -> dict | None:
         "predp_vynos": _q2(predp_vynos),
         "orient_nakl_hod": _q2(orient_nakl_hod),
         "predp_naklad": _q2(predp_naklad),
+
+        # NOVĚ (předpoklad subdodávek a hrubého výnosu)
+        "predp_subdodavky_arched": _q2(_as_dec(subdodavky_arched_plan, "0")),
+        "predp_hruby_vynos": _q2(predp_hruby_vynos),
+
+        # predp_zisk je nyní po subdodávkách (pokud jde spočítat)
         "predp_zisk": _q2(predp_zisk),
 
         # Skutečnost
         "sjednana_cena": _q2(sjednana_cena),
-        "subdodavky_arched": _q2(subdodavky_arched),
+        "subdodavky_arched": _q2(_as_dec(subdodavky_arched, "0")),
         "hruby_vynos": _q2(hruby_vynos),
 
         "skut_hodin": _q2(skut_hodin),
@@ -1917,5 +2043,25 @@ def _project_finance_for(zakazka) -> dict | None:
 
         "per_emp": per_emp,
     }
+
+@require_POST
+@login_required
+@csrf_protect
+def zakazka_poznamka_verejna_update_view(request, zakazka_id: int):
+    if not request.user.is_admin:
+        return HttpResponseForbidden("Pouze administrátor může upravovat poznámku.")
+
+    zakazka = get_object_or_404(Zakazka, id=zakazka_id)
+
+    txt = (request.POST.get("poznamka_verejna") or "").strip()  # prázdné = smazat
+    zakazka.poznamka_verejna = txt
+    zakazka.save(update_fields=["poznamka_verejna"])
+
+    messages.success(request, "Poznámka byla uložena.")
+
+    nxt = request.POST.get("next")
+    if not nxt:
+        nxt = reverse("homepage") + f"?detail_zakazka={zakazka.id}"
+    return redirect(nxt)
 
 

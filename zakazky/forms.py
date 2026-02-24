@@ -50,7 +50,6 @@ class ZakazkaForm(forms.ModelForm):
     predpokladany_cas = forms.IntegerField(label='Předpokládaný čas (h)', min_value=0)
     misto_stavby = forms.CharField(label='Místo stavby', widget=Textarea(attrs={'rows': 2}), strip=True)
     plna_moc = forms.BooleanField(label='Plná moc', required=False)
-    admin_poznamka = forms.CharField(label='poznámka admina', max_length=100)
     orientacni_naklady = forms.IntegerField(label='Rozpočet na stavbu')
     sjednana_cena = forms.DecimalField(
         label='Sjednaná cena (Kč)',
@@ -60,7 +59,12 @@ class ZakazkaForm(forms.ModelForm):
         label='Záloha (Kč)',
         max_digits=18, decimal_places=2, min_value=0, required=False
     )
-
+    admin_poznamka = forms.CharField(
+        label="Poznámka admina",
+        max_length=100,  # pokud chceš delší, viz bod 4 níž (model)
+        required=False,
+        widget=Textarea(attrs={"rows": 2, "class": "form-control", "placeholder": "Interní poznámka pro admina…"})
+    )
     class Meta:
         model = Zakazka
         exclude = ['sazba', 'termin']
@@ -79,7 +83,7 @@ class ZakazkaForm(forms.ModelForm):
             if value:
                 self.initial[field_name] = value.strftime('%Y-%m-%d')
 
-        tail = [name for name in ('sjednana_cena', 'zaloha') if name in self.fields]
+        tail = [name for name in ('sjednana_cena', 'zaloha', 'admin_poznamka') if name in self.fields]
         head = [n for n in list(self.fields.keys()) if n not in tail]
         self.order_fields(head + tail)
 

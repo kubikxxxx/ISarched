@@ -1,5 +1,6 @@
 # models.py
 from datetime import datetime
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
@@ -200,11 +201,6 @@ class Zakazka(models.Model):
     plna_moc = models.BooleanField()
     hip = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="HIP")
     popis_zadani = models.TextField()
-    admin_poznamka = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Interní poznámka pouze pro admina."
-    )
     sjednana_cena = models.DecimalField(
         "Sjednaná cena",
         max_digits=18,
@@ -225,6 +221,8 @@ class Zakazka(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="Hodinový náklad pro předpokládaný zisk."
     )
+    poznamka_verejna = models.TextField(blank=True, default="")
+    admin_poznamka = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = 'Zakazka'
@@ -260,6 +258,23 @@ class UredniZapis(models.Model):
 
 
 class ZakazkaSubdodavka(models.Model):
+    OBJ_KLIENT = "klient"
+    OBJ_ARCHED = "arched"
+    OBJ_ELIAS = "elias"
+    OBJEDNATEL_CHOICES = [
+        (OBJ_KLIENT, "Klient"),
+        (OBJ_ARCHED, "Arched"),
+        (OBJ_ELIAS, "Ing. arch. David Eliáš"),
+    ]
+
+    ZAD_NE = "nezadano"
+    ZAD_ANO = "zadano"
+    ZAD_HOT = "hotovo"
+    ZADANO_CHOICES = [
+        (ZAD_NE, "Nezadáno"),
+        (ZAD_ANO, "Zadáno"),
+        (ZAD_HOT, "Hotovo"),
+    ]
     zakazka = models.ForeignKey('Zakazka', on_delete=models.CASCADE, db_column='ID_Zakazka')
     subdodavka = models.ForeignKey('Subdodavka', on_delete=models.DO_NOTHING, db_column='ID_Subdodavka')
     subdodavatel = models.ForeignKey('Subdodavatel', on_delete=models.DO_NOTHING, db_column='ID_Subdodavatel')
@@ -267,6 +282,17 @@ class ZakazkaSubdodavka(models.Model):
     navyseni = models.DecimalField(max_digits=18, decimal_places=2)
     fakturuje_klientovi = models.BooleanField()
     fakturuje_arched = models.BooleanField()
+    cena_predpoklad = models.DecimalField(
+        max_digits=18, decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Předpokládaná/dohodnutá cena (pro předpoklady ve financích)"
+    )
+
+    termin_text = models.CharField(max_length=120, blank=True, default="")
+    zadano_stav = models.CharField(max_length=10, choices=ZADANO_CHOICES, default=ZAD_NE)
+    zadano_datum = models.DateField(null=True, blank=True)
+    objednatel = models.CharField(max_length=10, choices=OBJEDNATEL_CHOICES, default=OBJ_KLIENT)
+    rozsah = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = 'ZakazkaSubdodavka'

@@ -1,0 +1,128 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Subdodávky</title>
+  <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+  <style>
+    body { padding: 16px; background:#f6f7f9; }
+    .wrap { white-space: pre-wrap; }
+    .small-muted { color:#6c757d; font-size:.9rem; }
+    .cell-clip { max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+<div class="container-fluid">
+
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h4 class="mb-0">Subdodávky</h4>
+      <div class="text-muted">Zakázka: <strong>{{ zakazka.zakazka_cislo }} – {{ zakazka.nazev }}</strong></div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'homepage' %}?detail_zakazka={{ zakazka.id }}">← Zpět</a>
+  </div>
+
+  {% if assigned_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle table-hover bg-white">
+        <thead class="table-light">
+          <tr>
+            <th>Název subdodávky</th>
+            <th>Kdo ji dělá</th>
+            <th>Termín</th>
+            <th>Zadáno</th>
+            <th>Objednatel</th>
+            <th>Rozsah</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in assigned_rows %}
+            <tr>
+              <td class="fw-semibold">{{ r.subdodavka.nazev }}</td>
+
+              <td>
+                {% if r.subdodavatel %}
+                  {{ r.subdodavatel.jmeno }} {{ r.subdodavatel.prijmeni }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.termin_text %}
+                  {{ r.termin_text }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.zadano_stav == "hotovo" %}
+                  <span class="badge bg-success">Hotovo</span>
+                {% elif r.zadano_stav == "zadano" %}
+                  <span class="badge bg-primary">Zadáno</span>
+                  {% if r.zadano_datum %}
+                    <span class="small-muted ms-2">{{ r.zadano_datum|date:"d.m.Y" }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge bg-secondary">Nezadáno</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.objednatel == "arched" %}
+                  Arched
+                {% elif r.objednatel == "elias" %}
+                  Ing. arch. David Eliáš
+                {% else %}
+                  Klient
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.rozsah %}
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="cell-clip">{{ r.rozsah }}</div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#rozsahModal_{{ r.id }}">
+                      Zobrazit
+                    </button>
+                  </div>
+
+                  <div class="modal fade" id="rozsahModal_{{ r.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Rozsah – {{ r.subdodavka.nazev }}</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zavřít"></button>
+                        </div>
+                        <div class="modal-body">
+                          <div class="wrap">{{ r.rozsah }}</div>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zavřít</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">Pro tuto zakázku nejsou přiřazené žádné subdodávky.</div>
+  {% endif %}
+
+</div>
+
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>
