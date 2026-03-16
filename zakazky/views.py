@@ -25,7 +25,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, render
-from django.utils.timezone import now
+from django.utils.timezone import now, localdate
 import holidays
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
@@ -38,6 +38,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 import calendar
 import datetime as dt
+from .stats_cache import cache_path, load_cache
+from .stats_snapshot import build_statistiky_context
 from decimal import Decimal, ROUND_HALF_UP
 from .helpers import planned_hours, overhead_rate_on, _hours_between
 from .models import UredniZapis, RozsahText, UzaverkaMesice, PlanDen, OverheadRate
@@ -1489,36 +1491,69 @@ def statistiky_view(request):
         next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
         return f"{prev_y:04d}-{prev_m:02d}", f"{next_y:04d}-{next_m:02d}"
 
-    today = localdate()
+    # ------------------------------------------------------------
+    # SNAPSHOT "k minulému dni"
+    cutoff = localdate() - dt.timedelta(days=1)
+
     scope = (request.GET.get("scope") or "month").lower()
 
-    # --- období
+    # --- období (light výpočet) + hodnoty pro template
     prev_ym = next_ym = prev_y = next_y = ""
+    ym_for_template = ""
+    y_for_template = ""
+    year = None  # pro scope=year
+
     if scope == "year":
-        year = int(request.GET.get("y") or today.year)
+        year = int(request.GET.get("y") or cutoff.year)
         first_day = dt.date(year, 1, 1)
-        last_day  = dt.date(year, 12, 31)
-        calc_until = min(last_day, today) if year == today.year else last_day
+        last_day = dt.date(year, 12, 31)
+        calc_until = min(last_day, cutoff)
         prev_y, next_y = str(year - 1), str(year + 1)
         y_for_template, ym_for_template = year, ""
+
     elif scope == "all":
         first_v = ZakazkaZamestnanec.objects.order_by("den_prace").values_list("den_prace", flat=True).first()
-        first_day = first_v or today
-        last_day = today
-        calc_until = today
+        first_day = first_v or cutoff
+        last_day = cutoff
+        calc_until = cutoff
         y_for_template = ym_for_template = ""
-    else:
+
+    else:  # month
         ym = request.GET.get("ym")
         if ym:
             y, m = map(int, ym.split("-"))
         else:
-            y, m = today.year, today.month
+            y, m = cutoff.year, cutoff.month
+
         first_day, last_day = month_bounds(y, m)
-        calc_until = min(last_day, today) if (y == today.year and m == today.month) else last_day
+        # jen "do včerejška" u aktuálního měsíce (podle cutoff)
+        calc_until = min(last_day, cutoff) if (y == cutoff.year and m == cutoff.month) else last_day
+
         prev_ym, next_ym = month_nav(y, m)
         y_for_template, ym_for_template = "", f"{y:04d}-{m:02d}"
 
-    # --- efektivní hodinovka (pokud chybí sazba_hod)
+    # ------------------------------------------------------------
+    # 1) CACHE: zkus načíst hotový snapshot ze souboru
+    try:
+        if scope == "month":
+            p = cache_path("month", ym=ym_for_template)
+        elif scope == "year":
+            p = cache_path("year", y=year)
+        else:
+            p = cache_path("all")
+
+        cached = load_cache(p)
+        if cached:
+            # podporuje obě varianty: buď uložený přímo context, nebo {"context": ...}
+            ctx = cached.get("context") if isinstance(cached, dict) and "context" in cached else cached
+            return render(request, "statistiky.html", ctx)
+    except Exception:
+        # když cache selže, spočítáme živě (fallback)
+        pass
+
+    # ------------------------------------------------------------
+    # 2) FALLBACK: spočítat živě (tak jako dřív), ale do calc_until (= včerejšek pro aktuální období)
+
     def _as_dec(val, default="0"):
         try:
             return Decimal(str(val))
@@ -1532,6 +1567,7 @@ def statistiky_view(request):
         plan_h = planned_hours(emp, period_start, period_end) or ZERO
         if plan_h <= ZERO:
             return ZERO
+
         monthly_fields = ("mzda_mesic", "mesicni_mzda", "mzda", "plat_mesic", "salary_monthly")
         monthly_wage = None
         for f in monthly_fields:
@@ -1546,7 +1582,6 @@ def statistiky_view(request):
             return ZERO
         return (monthly_wage / plan_h).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    # --- výkazy v období
     qs = (
         ZakazkaZamestnanec.objects
         .filter(den_prace__gte=first_day, den_prace__lte=calc_until)
@@ -1575,12 +1610,11 @@ def statistiky_view(request):
         rate_h = _effective_rate_h(emp, first_day, calc_until)
         mzda = (plan_h * rate_h).quantize(Decimal("0.01"))
 
-        km_sum  = km_by_emp.get(emp.id, ZERO)
+        km_sum = km_by_emp.get(emp.id, ZERO)
         rate_km = Decimal(str(emp.sazba_km or 0))
         cestovne = (km_sum * rate_km).quantize(Decimal("0.01"))
 
-        emp_oh = _as_dec(getattr(emp, "rezie_hod", 0) or 0, "0")  # osobní režie/hod
-
+        emp_oh = _as_dec(getattr(emp, "rezie_hod", 0) or 0, "0")
         celk_naklad_hod = (rate_h + emp_oh).quantize(Decimal("0.01"))
         celkem = (mzda + cestovne).quantize(Decimal("0.01"))
 
@@ -1605,7 +1639,7 @@ def statistiky_view(request):
         rate_h = _effective_rate_h(emp, first_day, calc_until)
         castka = (hrs * rate_h).quantize(Decimal("0.01"))
 
-        km_sum  = km_by_emp.get(emp.id, ZERO)
+        km_sum = km_by_emp.get(emp.id, ZERO)
         rate_km = Decimal(str(emp.sazba_km or 0))
         cestovne = (km_sum * rate_km).quantize(Decimal("0.01"))
 
@@ -1628,8 +1662,12 @@ def statistiky_view(request):
     externists_total = sum((r["celkem"] for r in externist_rows), ZERO)
 
     # --- Nové / uzavřené zakázky
-    new_projects = Zakazka.objects.filter(zakazka_start__date__gte=first_day, zakazka_start__date__lte=calc_until).order_by("zakazka_start")
-    closed_projects = Zakazka.objects.filter(zakazka_konec_skut__date__gte=first_day, zakazka_konec_skut__date__lte=calc_until).order_by("zakazka_konec_skut")
+    new_projects = Zakazka.objects.filter(
+        zakazka_start__date__gte=first_day, zakazka_start__date__lte=calc_until
+    ).order_by("zakazka_start")
+    closed_projects = Zakazka.objects.filter(
+        zakazka_konec_skut__date__gte=first_day, zakazka_konec_skut__date__lte=calc_until
+    ).order_by("zakazka_konec_skut")
 
     # --- Projekty s výkazy
     projects_with_logs = (
@@ -1646,8 +1684,7 @@ def statistiky_view(request):
         .order_by("zakazka_id", "den_prace", "cas_od", "cas_do")
     )
 
-    # kapacity/sazby
-    proj_caps: dict[int, Decimal]  = {}
+    proj_caps: dict[int, Decimal] = {}
     proj_rates: dict[int, Decimal] = {}
     for z in Zakazka.objects.filter(id__in=projects_with_logs).select_related("sazba"):
         cap = _as_dec(getattr(z, "predpokladany_cas", 0), "0")
@@ -1656,7 +1693,6 @@ def statistiky_view(request):
 
     cum_hours_by_proj: dict[int, Decimal] = defaultdict(lambda: ZERO)
 
-    # agregace do tabulek po zakázkách
     month_agg: dict[int, dict[int, dict]] = defaultdict(
         lambda: defaultdict(lambda: {"emp": None, "hours": ZERO, "naklady": ZERO, "vynosy": ZERO, "zisk": ZERO})
     )
@@ -1680,18 +1716,17 @@ def statistiky_view(request):
             remaining = ZERO
         allowed = h if remaining >= h else (remaining if remaining > ZERO else ZERO)
 
-        if first_day <= v.den_prace <= calc_until:
-            rev = (allowed * proj_rate)
-            cost = (h * (rate_h + emp_oh))                # bez firemní režie
-            profit = (rev - cost)
+        rev = (allowed * proj_rate)
+        cost = (h * (rate_h + emp_oh))
+        profit = (rev - cost)
 
-            cell = month_agg[proj_id][emp.id]
-            if cell["emp"] is None:
-                cell["emp"] = emp
-            cell["hours"]   += h
-            cell["vynosy"]  += rev
-            cell["naklady"] += cost
-            cell["zisk"]    += profit
+        cell = month_agg[proj_id][emp.id]
+        if cell["emp"] is None:
+            cell["emp"] = emp
+        cell["hours"] += h
+        cell["vynosy"] += rev
+        cell["naklady"] += cost
+        cell["zisk"] += profit
 
         cum_hours_by_proj[proj_id] = used_so_far + h
 
@@ -1755,6 +1790,8 @@ def statistiky_view(request):
 
         "projects_month_tables": month_tables,
         "projects_total_zisk": projects_total_zisk,
+
+        "cache_source": "computed",
     })
 
 

@@ -16,6 +16,9 @@
 
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h3 class="mb-0">Statistiky</h3>
+    <span class="ms-2 badge bg-secondary">
+  {{ cache_source|default:"unknown" }}
+</span>
 
         <div class="d-flex align-items-center gap-2">
             <a class="btn btn-sm {% if scope == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
