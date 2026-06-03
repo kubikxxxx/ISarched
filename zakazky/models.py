@@ -31,6 +31,7 @@ class Zamestnanec(AbstractBaseUser, PermissionsMixin):
     prijmeni = models.CharField(max_length=255)
     titul = models.CharField(max_length=50, blank=True, null=True)
     datum_nastup = models.DateTimeField(default=now)
+    datum_ukonceni = models.DateTimeField(null=True, blank=True, default=None)
 
     sazba_hod = models.DecimalField(
         max_digits=18, decimal_places=2,

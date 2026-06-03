@@ -8,7 +8,7 @@ from django.utils.timezone import localdate
 from django.db.models import Sum
 
 from .models import ZakazkaZamestnanec, Zakazka, Zamestnanec
-from .helpers import planned_hours, _hours_between
+from .helpers import planned_hours, _hours_between, employment_clip
 
 
 def build_statistiky_context(scope: str, ym: str | None = None, y: int | None = None,
@@ -70,12 +70,20 @@ def build_statistiky_context(scope: str, ym: str | None = None, y: int | None = 
         except Exception:
             return Decimal(default)
 
-    def _effective_rate_h(emp, period_start: dt.date, period_end: dt.date) -> Decimal:
+    def _effective_rate_h(
+        emp,
+        period_start: dt.date,
+        period_end: dt.date,
+        rate_period_start: dt.date | None = None,
+        rate_period_end: dt.date | None = None,
+    ) -> Decimal:
         base = _as_dec(getattr(emp, "sazba_hod", 0), "0")
         if base > ZERO:
             return base
 
-        plan_h = planned_hours(emp, period_start, period_end) or ZERO
+        rs = rate_period_start or period_start
+        re = rate_period_end or period_end
+        plan_h = planned_hours(emp, rs, re) or ZERO
         if plan_h <= ZERO:
             return ZERO
 
@@ -120,8 +128,15 @@ def build_statistiky_context(scope: str, ym: str | None = None, y: int | None = 
     # --- Mzdy zaměstnanci
     employees_rows = []
     for emp in Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EMPLOYEE):
-        plan_h = planned_hours(emp, first_day, calc_until) or ZERO
-        rate_h = _effective_rate_h(emp, first_day, calc_until)
+        clipped = employment_clip(emp, first_day, calc_until)
+        if clipped is None:
+            continue
+        eff_start, eff_end = clipped
+        plan_h = planned_hours(emp, eff_start, eff_end) or ZERO
+        if scope == "month":
+            rate_h = _effective_rate_h(emp, eff_start, eff_end, first_day, last_day)
+        else:
+            rate_h = _effective_rate_h(emp, eff_start, eff_end)
         mzda = (plan_h * rate_h).quantize(Decimal("0.01"))
 
         km_sum = km_by_emp.get(emp.id, ZERO)
@@ -149,8 +164,13 @@ def build_statistiky_context(scope: str, ym: str | None = None, y: int | None = 
     # --- Externisté
     externist_rows = []
     for emp in Zamestnanec.objects.filter(is_active=True, typ_osoby=Zamestnanec.TYP_EXTERNAL):
+        if employment_clip(emp, first_day, calc_until) is None:
+            continue
         hrs = workh_by_emp.get(emp.id, ZERO)
-        rate_h = _effective_rate_h(emp, first_day, calc_until)
+        if scope == "month":
+            rate_h = _effective_rate_h(emp, first_day, calc_until, first_day, last_day)
+        else:
+            rate_h = _effective_rate_h(emp, first_day, calc_until)
         castka = (hrs * rate_h).quantize(Decimal("0.01"))
 
         km_sum = km_by_emp.get(emp.id, ZERO)
@@ -224,17 +244,24 @@ def build_statistiky_context(scope: str, ym: str | None = None, y: int | None = 
         cap_total = proj_caps.get(proj_id, ZERO)
         proj_rate = proj_rates.get(proj_id, ZERO)
 
-        rate_h = _effective_rate_h(emp, first_day, calc_until)
-        emp_oh = _as_dec(getattr(emp, "rezie_hod", 0) or 0, "0")
-
         used_so_far = cum_hours_by_proj[proj_id]
         remaining = cap_total - used_so_far
         if remaining < ZERO:
             remaining = ZERO
         allowed = h if remaining >= h else (remaining if remaining > ZERO else ZERO)
 
-        # ✅ DO TABULKY počítáme jen když log spadá do období
-        if first_day <= v.den_prace <= calc_until:
+        # ✅ DO TABULKY počítáme jen když log spadá do období a den je v zaměstnání
+        if first_day <= v.den_prace <= calc_until and employment_clip(emp, v.den_prace, v.den_prace):
+            y, m = v.den_prace.year, v.den_prace.month
+            m_start = dt.date(y, m, 1)
+            m_last = calendar.monthrange(y, m)[1]
+            m_end = dt.date(y, m, m_last)
+            m_clip = employment_clip(emp, m_start, m_end)
+            if m_clip:
+                rate_h = _effective_rate_h(emp, *m_clip, m_start, m_end)
+            else:
+                rate_h = ZERO
+            emp_oh = _as_dec(getattr(emp, "rezie_hod", 0) or 0, "0")
             rev = (allowed * proj_rate)
             cost = (h * (rate_h + emp_oh))
             profit = (rev - cost)

@@ -152,7 +152,8 @@ class EmployeeEditForm(forms.ModelForm):
     class Meta:
         model = Zamestnanec
         fields = ('username', 'jmeno', 'prijmeni', 'titul', 'is_admin',
-                  'sazba_hod', 'rezie_hod', "typ_osoby", "mzda_mesic", "sazba_km")
+                  'sazba_hod', 'rezie_hod', "typ_osoby", "mzda_mesic", "sazba_km",
+                  "datum_nastup", "datum_ukonceni")
         labels = {
             'username': 'Uživatelské jméno (přihlašovací)',
             'jmeno': 'Jméno',
@@ -164,6 +165,8 @@ class EmployeeEditForm(forms.ModelForm):
             "mzda_mesic": 'mzda/měsíc (vyplnit jen u zaměstnanců)',
             "sazba_km": 'sazba na kilometr',
             "rezie_hod": 'Režie na pracovníka (Kč/h)',
+            "datum_nastup": 'Datum nástupu',
+            "datum_ukonceni": 'Datum ukončení (volitelné)',
         }
         widgets = {
             'username': forms.TextInput(attrs={'class': 'form-control'}),
@@ -175,7 +178,23 @@ class EmployeeEditForm(forms.ModelForm):
             "mzda_mesic": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
             "sazba_km": forms.NumberInput(attrs={"min": "0", "class": "form-control"}),
             "rezie_hod": forms.NumberInput(attrs={"min": "0", "step": "0.01", "class": "form-control"}),
+            "datum_nastup": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "class": "form-control"},
+                format="%Y-%m-%dT%H:%M",
+            ),
+            "datum_ukonceni": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "class": "form-control"},
+                format="%Y-%m-%dT%H:%M",
+            ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        dt_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
+        for name in ("datum_nastup", "datum_ukonceni"):
+            if name in self.fields:
+                self.fields[name].input_formats = dt_formats
+                self.fields[name].required = name == "datum_nastup"
 
     def clean(self):
         cleaned = super().clean()
@@ -184,6 +203,10 @@ class EmployeeEditForm(forms.ModelForm):
         # Externista musí mít hodinovou sazbu vyplněnou
         if typ == Zamestnanec.TYP_EXTERNAL and (sazba is None):
             self.add_error("sazba_hod", "Externista musí mít vyplněnou hodinovou sazbu.")
+        nastup = cleaned.get("datum_nastup")
+        ukonceni = cleaned.get("datum_ukonceni")
+        if nastup and ukonceni and ukonceni < nastup:
+            self.add_error("datum_ukonceni", "Datum ukončení nesmí být dříve než datum nástupu.")
         return cleaned
 
     def save(self, commit=True):

@@ -5,9 +5,38 @@ from decimal import Decimal, ROUND_HALF_UP
 import datetime as dt
 import calendar
 from django.db.models import Sum
-from django.utils.timezone import localdate
+from django.utils.timezone import is_aware, localdate, localtime
 
 from .models import OverheadRate, PlanDen, ZakazkaZamestnanec, Zamestnanec, ZakazkaSubdodavka, Zakazka
+
+
+def _to_local_date(val) -> dt.date | None:
+    if val is None:
+        return None
+    if isinstance(val, dt.datetime):
+        if is_aware(val):
+            return localtime(val).date()
+        return val.date()
+    if isinstance(val, dt.date):
+        return val
+    return None
+
+
+def employment_clip(
+    emp: Zamestnanec, period_start: dt.date, period_end: dt.date
+) -> tuple[dt.date, dt.date] | None:
+    """Průnik období statistik s nástupem a případným ukončením zaměstnance."""
+    nastup = _to_local_date(getattr(emp, "datum_nastup", None))
+    if nastup is None:
+        nastup = period_start
+    eff_start = max(period_start, nastup)
+    eff_end = period_end
+    ukonceni = _to_local_date(getattr(emp, "datum_ukonceni", None))
+    if ukonceni is not None:
+        eff_end = min(eff_end, ukonceni)
+    if eff_start > eff_end:
+        return None
+    return eff_start, eff_end
 
 
 # --- Svátky ČR (stejně jako máš ve views, tady samostatně) -------------------
