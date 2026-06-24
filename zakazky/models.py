@@ -341,7 +341,7 @@ class ZamestnanecZakazka(models.Model):
         return f"{self.zamestnanec} – {self.zakazka}"
 
 class RozsahText(models.Model):
-    text = models.TextField(unique=True)
+    text = models.TextField(unique=False)
 
     class Meta:
         db_table = 'RozsahText'
