@@ -477,22 +477,31 @@ def zakazka_subdodavky_view(request, zakazka_id):
     # --- ADMIN EDIT (tvoje stávající) ---------------------------------------
     subdodavky = list(Subdodavka.objects.all())
     subdodavatele = Subdodavatel.objects.all()
+    subdodavky_by_id = {s.id: s for s in subdodavky}
 
     # prefilling pro admin šablonu (ponechávám kompatibilitu s tvým filtrem get_subdodavka)
     assigned = assigned_qs
 
     if request.method == "POST":
-        ZakazkaSubdodavka.objects.filter(zakazka=zakazka).delete()
+        from types import SimpleNamespace
 
-        selected_ids = request.POST.getlist("subdodavka")
-        for sid in selected_ids:
-            sub_id = int(sid)
+        selected_ids = []
+        for sid in request.POST.getlist("subdodavka"):
+            try:
+                selected_ids.append(int(sid))
+            except (TypeError, ValueError):
+                continue
 
-            subdodavatel_id = request.POST.get(f"subdodavatel_{sub_id}")
+        parsed_rows = []
+        field_errors = {}
+        posted_assigned = {}
+
+        for sub_id in selected_ids:
+            subdodavatel_id = (request.POST.get(f"subdodavatel_{sub_id}") or "").strip()
             fakturace = request.POST.get(f"fakturace_{sub_id}")  # "klient" | "arched"
 
             cena_predp_raw = (request.POST.get(f"cena_predp_{sub_id}") or "").strip()
-            cena_skut_raw  = (request.POST.get(f"cena_{sub_id}") or "").strip()
+            cena_skut_raw = (request.POST.get(f"cena_{sub_id}") or "").strip()
 
             termin_text = (request.POST.get(f"termin_{sub_id}") or "").strip()
             rozsah_text = (request.POST.get(f"rozsah_{sub_id}") or "").strip()
@@ -501,61 +510,109 @@ def zakazka_subdodavky_view(request, zakazka_id):
             zadano_datum_raw = (request.POST.get(f"zadano_datum_{sub_id}") or "").strip()
             objednatel = request.POST.get(f"objednatel_{sub_id}", "klient")
 
-            # základní validace
-            if not subdodavatel_id or fakturace not in ("klient", "arched"):
-                messages.error(request, f"Chyba u subdodávky ID {sub_id}: vyplňte subdodavatele a fakturaci.")
-                return redirect(request.path)
-
-            if zadano_stav not in ("nezadano", "zadano", "hotovo"):
-                messages.error(request, f"Chyba u subdodávky ID {sub_id}: neplatný stav zadáno.")
-                return redirect(request.path)
-
-            if objednatel not in ("klient", "arched", "elias"):
-                messages.error(request, f"Chyba u subdodávky ID {sub_id}: neplatný objednatel.")
-                return redirect(request.path)
+            subdodavatel_obj = None
+            if subdodavatel_id:
+                try:
+                    subdodavatel_obj = SimpleNamespace(id=int(subdodavatel_id))
+                except (TypeError, ValueError):
+                    subdodavatel_obj = None
+                    subdodavatel_id = ""
 
             zadano_datum = None
-            if zadano_stav == "zadano":
-                if not zadano_datum_raw:
-                    messages.error(request, f"Chyba u subdodávky ID {sub_id}: pro 'Zadáno' vyplň datum.")
-                    return redirect(request.path)
+            if zadano_datum_raw:
                 try:
                     zadano_datum = dt.date.fromisoformat(zadano_datum_raw)
                 except Exception:
-                    messages.error(request, f"Chyba u subdodávky ID {sub_id}: datum musí být YYYY-MM-DD.")
-                    return redirect(request.path)
+                    pass
 
-            if cena_predp_raw == "" and cena_skut_raw == "":
-                messages.error(request, f"Chyba u subdodávky ID {sub_id}: vyplňte alespoň jednu cenu.")
-                return redirect(request.path)
-
-            cena_predp = _to_decimal(cena_predp_raw, allow_empty=True)
-            cena_skut  = _to_decimal(cena_skut_raw, allow_empty=True)
-            if cena_predp is None or cena_skut is None:
-                messages.error(request, f"Chyba u subdodávky ID {sub_id}: cena není číslo.")
-                return redirect(request.path)
-
-            cena_predp = Decimal(cena_predp).quantize(Decimal("0.01"))
-            cena_skut  = Decimal(cena_skut).quantize(Decimal("0.01"))
-
-            ZakazkaSubdodavka.objects.create(
-                zakazka=zakazka,
+            # zachovat vyplněné hodnoty i při chybě validace
+            posted_assigned[sub_id] = SimpleNamespace(
                 subdodavka_id=sub_id,
-                subdodavatel_id=int(subdodavatel_id),
-
-                cena_predpoklad=cena_predp,
-                cena=cena_skut,
-                navyseni=Decimal("0.00"),
-
-                termin_text=termin_text,
-                zadano_stav=zadano_stav,
-                zadano_datum=zadano_datum,
-                objednatel=objednatel,
-                rozsah=rozsah_text,
-
+                subdodavatel=subdodavatel_obj,
                 fakturuje_klientovi=(fakturace == "klient"),
                 fakturuje_arched=(fakturace == "arched"),
+                cena_predpoklad=cena_predp_raw,
+                cena=cena_skut_raw,
+                termin_text=termin_text,
+                objednatel=objednatel or "klient",
+                zadano_stav=zadano_stav or "nezadano",
+                zadano_datum=zadano_datum,
+                rozsah=rozsah_text,
             )
+
+            errs = {}
+
+            if not subdodavatel_id:
+                errs["subdodavatel"] = "Vyberte subdodavatele."
+            if fakturace not in ("klient", "arched"):
+                errs["fakturace"] = "Vyberte fakturaci."
+            if zadano_stav not in ("nezadano", "zadano", "hotovo"):
+                errs["zadano_stav"] = "Neplatný stav zadáno."
+            if objednatel not in ("klient", "arched", "elias"):
+                errs["objednatel"] = "Neplatný objednatel."
+
+            if zadano_stav == "zadano":
+                if not zadano_datum_raw:
+                    errs["zadano_datum"] = "Pro stav „Zadáno“ vyplňte datum."
+                elif zadano_datum is None:
+                    errs["zadano_datum"] = "Datum musí být ve formátu YYYY-MM-DD."
+
+            if cena_predp_raw == "" and cena_skut_raw == "":
+                errs["cena"] = "Vyplňte alespoň jednu cenu."
+            else:
+                cena_predp = _to_decimal(cena_predp_raw, allow_empty=True)
+                cena_skut = _to_decimal(cena_skut_raw, allow_empty=True)
+                if cena_predp is None or cena_skut is None:
+                    errs["cena"] = "Cena není platné číslo."
+
+            if errs:
+                field_errors[sub_id] = errs
+                continue
+
+            cena_predp = _to_decimal(cena_predp_raw, allow_empty=True)
+            cena_skut = _to_decimal(cena_skut_raw, allow_empty=True)
+
+            parsed_rows.append({
+                "subdodavka_id": sub_id,
+                "subdodavatel_id": int(subdodavatel_id),
+                "cena_predpoklad": Decimal(cena_predp).quantize(Decimal("0.01")),
+                "cena": Decimal(cena_skut).quantize(Decimal("0.01")),
+                "termin_text": termin_text,
+                "zadano_stav": zadano_stav,
+                "zadano_datum": zadano_datum if zadano_stav == "zadano" else None,
+                "objednatel": objednatel,
+                "rozsah": rozsah_text,
+                "fakturuje_klientovi": (fakturace == "klient"),
+                "fakturuje_arched": (fakturace == "arched"),
+            })
+
+        if field_errors:
+            return render(request, "zakazka_subdodavky_form.html", {
+                "zakazka": zakazka,
+                "subdodavky": subdodavky,
+                "subdodavatele": subdodavatele,
+                "assigned": posted_assigned,
+                "field_errors": field_errors,
+            })
+
+        with transaction.atomic():
+            ZakazkaSubdodavka.objects.filter(zakazka=zakazka).delete()
+            for row in parsed_rows:
+                ZakazkaSubdodavka.objects.create(
+                    zakazka=zakazka,
+                    subdodavka_id=row["subdodavka_id"],
+                    subdodavatel_id=row["subdodavatel_id"],
+                    cena_predpoklad=row["cena_predpoklad"],
+                    cena=row["cena"],
+                    navyseni=Decimal("0.00"),
+                    termin_text=row["termin_text"],
+                    zadano_stav=row["zadano_stav"],
+                    zadano_datum=row["zadano_datum"],
+                    objednatel=row["objednatel"],
+                    rozsah=row["rozsah"],
+                    fakturuje_klientovi=row["fakturuje_klientovi"],
+                    fakturuje_arched=row["fakturuje_arched"],
+                )
 
         messages.success(request, "Subdodávky byly uloženy.")
         return redirect("homepage")
@@ -565,6 +622,7 @@ def zakazka_subdodavky_view(request, zakazka_id):
         "subdodavky": subdodavky,
         "subdodavatele": subdodavatele,
         "assigned": assigned,
+        "field_errors": {},
     })
 
 

@@ -134,10 +134,10 @@
 
     <div class="row g-3">
       {% for s in subdodavky %}
-        {% with a=assigned|get_subdodavka:s %}
+        {% with a=assigned|get_subdodavka:s fe=field_errors|get_item:s.id %}
           <div class="col-12 col-md-6 col-xl-4">
 
-            <div class="card h-100 sub-card {% if a %}active{% else %}inactive{% endif %}" data-subcard="{{ s.id }}">
+            <div class="card h-100 sub-card {% if a %}active{% else %}inactive{% endif %}{% if fe %} border-danger{% endif %}" data-subcard="{{ s.id }}">
 
               <div class="card-header d-flex justify-content-between align-items-center">
                 <div class="sub-title">{{ s.nazev }}</div>
@@ -165,7 +165,7 @@
                 <!-- Subdodavatel -->
                 <div class="mb-2">
                   <label for="subdodavatel_{{ s.id }}" class="form-label small mb-1">Subdodavatel</label>
-                  <select class="form-select form-select-sm"
+                  <select class="form-select form-select-sm{% if fe.subdodavatel %} is-invalid{% endif %}"
                           name="subdodavatel_{{ s.id }}"
                           id="subdodavatel_{{ s.id }}">
                     <option value="">-- Vyberte --</option>
@@ -175,6 +175,9 @@
                       </option>
                     {% endfor %}
                   </select>
+                  {% if fe.subdodavatel %}
+                    <div class="alert alert-danger py-1 px-2 small mt-1 mb-0">{{ fe.subdodavatel }}</div>
+                  {% endif %}
                 </div>
 
                 <!-- Fakturace -->
@@ -182,7 +185,7 @@
                   <div class="small fw-semibold mb-1">Fakturace</div>
                   <div class="d-flex gap-3 flex-wrap">
                     <label class="form-check small m-0">
-                      <input class="form-check-input"
+                      <input class="form-check-input{% if fe.fakturace %} is-invalid{% endif %}"
                              type="radio"
                              name="fakturace_{{ s.id }}"
                              value="klient"
@@ -195,7 +198,7 @@
                     </label>
 
                     <label class="form-check small m-0">
-                      <input class="form-check-input"
+                      <input class="form-check-input{% if fe.fakturace %} is-invalid{% endif %}"
                              type="radio"
                              name="fakturace_{{ s.id }}"
                              value="arched"
@@ -203,6 +206,9 @@
                       Arched
                     </label>
                   </div>
+                  {% if fe.fakturace %}
+                    <div class="alert alert-danger py-1 px-2 small mt-1 mb-0">{{ fe.fakturace }}</div>
+                  {% endif %}
                 </div>
 
                 <hr class="my-2">
@@ -212,7 +218,7 @@
                   <div class="col-6">
                     <label for="cena_predp_{{ s.id }}" class="form-label small mb-1">Předpoklad</label>
                     <input type="text"
-                           class="form-control form-control-sm"
+                           class="form-control form-control-sm{% if fe.cena %} is-invalid{% endif %}"
                            name="cena_predp_{{ s.id }}"
                            id="cena_predp_{{ s.id }}"
                            placeholder="12 000"
@@ -221,13 +227,16 @@
                   <div class="col-6">
                     <label for="cena_{{ s.id }}" class="form-label small mb-1">Skutečnost</label>
                     <input type="text"
-                           class="form-control form-control-sm"
+                           class="form-control form-control-sm{% if fe.cena %} is-invalid{% endif %}"
                            name="cena_{{ s.id }}"
                            id="cena_{{ s.id }}"
                            placeholder="11 500"
                            value="{% if a %}{{ a.cena }}{% endif %}">
                   </div>
                 </div>
+                {% if fe.cena %}
+                  <div class="alert alert-danger py-1 px-2 small mb-2">{{ fe.cena }}</div>
+                {% endif %}
                 <div class="small-muted mb-2">Předpoklad → do předpokladů financí, Skutečnost → do skutečnosti.</div>
 
                 <!-- Termín + Objednatel -->
@@ -244,7 +253,7 @@
 
                   <div class="col-12">
                     <label for="objednatel_{{ s.id }}" class="form-label small mb-1">Objednatel</label>
-                    <select class="form-select form-select-sm"
+                    <select class="form-select form-select-sm{% if fe.objednatel %} is-invalid{% endif %}"
                             name="objednatel_{{ s.id }}"
                             id="objednatel_{{ s.id }}">
                       {% with o=a.objednatel|default:"klient" %}
@@ -253,6 +262,9 @@
                         <option value="elias"  {% if o == "elias" %}selected{% endif %}>Ing. arch. David Eliáš</option>
                       {% endwith %}
                     </select>
+                    {% if fe.objednatel %}
+                      <div class="alert alert-danger py-1 px-2 small mt-1 mb-0">{{ fe.objednatel }}</div>
+                    {% endif %}
                   </div>
                 </div>
 
@@ -260,7 +272,7 @@
                 <div class="row g-2 mb-2">
                   <div class="col-6">
                     <label for="zadano_stav_{{ s.id }}" class="form-label small mb-1">Zadáno</label>
-                    <select class="form-select form-select-sm"
+                    <select class="form-select form-select-sm{% if fe.zadano_stav %} is-invalid{% endif %}"
                             name="zadano_stav_{{ s.id }}"
                             id="zadano_stav_{{ s.id }}"
                             data-zadano-select="{{ s.id }}">
@@ -270,15 +282,21 @@
                         <option value="hotovo"   {% if st == "hotovo" %}selected{% endif %}>Hotovo</option>
                       {% endwith %}
                     </select>
+                    {% if fe.zadano_stav %}
+                      <div class="alert alert-danger py-1 px-2 small mt-1 mb-0">{{ fe.zadano_stav }}</div>
+                    {% endif %}
                   </div>
                   <div class="col-6">
                     <label for="zadano_datum_{{ s.id }}" class="form-label small mb-1">Datum</label>
                     <input type="date"
-                           class="form-control form-control-sm"
+                           class="form-control form-control-sm{% if fe.zadano_datum %} is-invalid{% endif %}"
                            name="zadano_datum_{{ s.id }}"
                            id="zadano_datum_{{ s.id }}"
                            data-zadano-date="{{ s.id }}"
                            value="{% if a and a.zadano_datum %}{{ a.zadano_datum|date:'Y-m-d' }}{% endif %}">
+                    {% if fe.zadano_datum %}
+                      <div class="alert alert-danger py-1 px-2 small mt-1 mb-0">{{ fe.zadano_datum }}</div>
+                    {% endif %}
                   </div>
                 </div>
 
@@ -434,6 +452,11 @@
       }
     });
   });
+
+  const firstErr = document.querySelector('.sub-card .alert-danger, .sub-card .is-invalid');
+  if(firstErr){
+    firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 })();
 </script>
 
